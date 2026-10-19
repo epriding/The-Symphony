@@ -20,6 +20,62 @@ import math
 logger = setup_logger(__name__)
 
 
+def _order_field(order, name, default=None):
+    """Read fields from the SDK's dict-like and model-like order responses."""
+    if isinstance(order, dict):
+        return order.get(name, default)
+    return getattr(order, name, default)
+
+
+def _numeric_amount(value):
+    """Parse a number or API Amount object into a finite float."""
+    if isinstance(value, dict):
+        if "value" not in value:
+            raise ValueError("amount object is missing 'value'")
+        value = value["value"]
+    elif hasattr(value, "value"):
+        value = value.value
+    if isinstance(value, bool) or value is None or value == "":
+        raise ValueError("amount must be a number")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid amount {value!r}") from exc
+    if not math.isfinite(number):
+        raise ValueError("amount must be finite")
+    return number
+
+
+def _order_size_and_filled(order):
+    """Return original order quantity and cumulative fills when available."""
+    quantity = _order_field(order, "quantity")
+    cumulative = _order_field(order, "cumQuantity")
+    leaves = _order_field(order, "leavesQuantity")
+
+    if quantity is not None:
+        size = _numeric_amount(quantity)
+    elif cumulative is not None and leaves is not None:
+        # The API defines cumQuantity as filled and leavesQuantity as still open.
+        size = _numeric_amount(cumulative) + _numeric_amount(leaves)
+    else:
+        raise ValueError("order has no quantity fields")
+
+    state = _order_field(order, "state")
+    terminal_without_fill = {
+        "ORDER_STATE_CANCELED", "ORDER_STATE_REJECTED", "ORDER_STATE_EXPIRED",
+        "ORDER_STATE_REPLACED", "CANCELED", "REJECTED", "EXPIRED",
+    }
+    if cumulative is not None:
+        filled = _numeric_amount(cumulative)
+    elif state in {"ORDER_STATE_FILLED", "FILLED"}:
+        filled = size
+    elif leaves is not None and state not in terminal_without_fill:
+        filled = max(0.0, size - _numeric_amount(leaves))
+    else:
+        filled = None
+    return size, filled
+
+
 class PolyUsClient(RestClient):
     def __init__(
         self,
@@ -129,8 +185,14 @@ class PolyUsClient(RestClient):
 
     def _to_orderbook(self, raw: Dict, market_id: str, outcome: str) -> OrderBook:
         """Converts a raw Polymarket US book response into the canonical OrderBook."""
-        bids = {float(level["px"]["value"]): float(level["qty"]) for level in raw.get("bids", [])}
-        asks = {float(level["px"]["value"]): float(level["qty"]) for level in raw.get("offers", [])}
+        bids = {
+            _numeric_amount(level["px"]): _numeric_amount(level["qty"])
+            for level in raw.get("bids", [])
+        }
+        asks = {
+            _numeric_amount(level["px"]): _numeric_amount(level["qty"])
+            for level in raw.get("offers", [])
+        }
 
         return OrderBook(
             market_id=market_id,
@@ -215,21 +277,58 @@ class PolyUsClient(RestClient):
         orders = []
 
         for order in raw.get("orders", []):
-            outcome, side = self._INTENT_MAP[order["intent"]]
+            outcome, side = self._INTENT_MAP[_order_field(order, "intent")]
+            size, filled_quantity = _order_size_and_filled(order)
+            price = _order_field(order, "price")
             orders.append(OrderRecord(
-                order_id=order.id,
-                market_id=await self._get_market_id(slug=order.marketSlug),
+                order_id=_order_field(order, "id"),
+                market_id=await self._get_market_id(slug=_order_field(order, "marketSlug")),
                 exchange="POLYMARKET_US",
                 outcome=outcome,
                 side=side,
-                size=float(order.leavesQuantity),   # leavesQuantity is remaining orders left unfilled
-                price=float(order.price.value),
-                status=self._get_order_state(state=order.state),
+                size=size,  # total/original order quantity
+                price=_numeric_amount(price),
+                status=self._get_order_state(state=_order_field(order, "state")),
                 strategy="",                        # exchange doesn't know strategies but state.reconcile carries it over
-                tif=self._get_tif(tif=order.tif)
+                tif=self._get_tif(tif=_order_field(order, "tif")),
+                filled_quantity=filled_quantity,
             ))
 
         return orders
+
+    async def get_order(self, order_id: str) -> Optional[OrderRecord]:
+        raw_response = await self.polymarket_api.get_order(order_id)
+        if raw_response is None:
+            return None
+        raw = _order_field(raw_response, "order", raw_response)
+        intent = _order_field(raw, "intent")
+        if intent not in self._INTENT_MAP:
+            raise ValueError(f"order {order_id} has missing or unknown intent")
+        slug = _order_field(raw, "marketSlug")
+        market_id = await self._resolve_order_market_id(raw, slug)
+        size, filled_quantity = _order_size_and_filled(raw)
+        outcome, side = self._INTENT_MAP[intent]
+        return OrderRecord(
+            order_id=_order_field(raw, "id", order_id),
+            market_id=market_id,
+            exchange="POLYMARKET_US",
+            outcome=outcome,
+            side=side,
+            size=size,
+            price=_numeric_amount(_order_field(raw, "price")),
+            status=self._get_order_state(_order_field(raw, "state")),
+            strategy="",
+            tif=self._get_tif(_order_field(raw, "tif")),
+            filled_quantity=filled_quantity,
+        )
+
+    async def _resolve_order_market_id(self, order, slug: Optional[str]) -> str:
+        market_id = _order_field(order, "marketId")
+        if market_id:
+            return market_id
+        if not slug:
+            raise ValueError("order is missing marketSlug and marketId")
+        return await self._get_market_id(slug=slug)
 
     async def place_order(self, order: OrderIntent) -> OrderRecord:
         response = await self.polymarket_api.create_order(
@@ -247,20 +346,22 @@ class PolyUsClient(RestClient):
             #log an error and return none
             return None
 
-        payload = response.executions.order
-        outcome, side = self._INTENT_MAP[payload.intent]
-        size = payload.leavesQuantity if payload.leavesQuantity else payload.cumQuantity
+        executions = _order_field(response, "executions")
+        payload = _order_field(executions, "order")
+        outcome, side = self._INTENT_MAP[_order_field(payload, "intent")]
+        size, filled_quantity = _order_size_and_filled(payload)
         record = OrderRecord(
-            order_id=payload.id,
-            market_id=await self._get_market_id(slug=payload.marketSlug),
+            order_id=_order_field(payload, "id"),
+            market_id=await self._get_market_id(slug=_order_field(payload, "marketSlug")),
             exchange="POLYMARKET_US",
             outcome=outcome,
             side=side,
-            size=float(size),
-            price=float(payload.price.value),
-            status=self._get_order_state(state=payload.state),
+            size=size,
+            price=_numeric_amount(_order_field(payload, "price")),
+            status=self._get_order_state(state=_order_field(payload, "state")),
             strategy=order.strategy,
-            tif=self._get_tif(tif=payload.tif)
+            tif=self._get_tif(tif=_order_field(payload, "tif")),
+            filled_quantity=filled_quantity,
         )
 
         return record
@@ -308,23 +409,8 @@ class PolyUsWebsocketClient(WebsocketClient):
             },
         )
         self.queue: asyncio.Queue = asyncio.Queue()
-
-    @staticmethod
-    def _amount(value) -> float:
-        """Parse a scalar or API Amount object; reject absent/malformed values."""
-        if isinstance(value, dict):
-            if "value" not in value:
-                raise ValueError("amount object is missing 'value'")
-            value = value["value"]
-        if isinstance(value, bool) or value is None or value == "":
-            raise ValueError("amount must be a number")
-        try:
-            number = float(value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"invalid amount {value!r}") from exc
-        if not math.isfinite(number):
-            raise ValueError(f"amount must be finite, got {value!r}")
-        return number
+        self._order_snapshot_orders: List[OrderRecord] = []
+        self._order_snapshot_skipped = False
 
     @staticmethod
     def _timestamp(value) -> float:
@@ -392,7 +478,7 @@ class PolyUsWebsocketClient(WebsocketClient):
                 for level in levels:
                     if not isinstance(level, dict) or "px" not in level or "qty" not in level:
                         raise ValueError("book level requires px and qty")
-                    price, quantity = self._amount(level["px"]), self._amount(level["qty"])
+                    price, quantity = _numeric_amount(level["px"]), _numeric_amount(level["qty"])
                     if quantity < 0:
                         raise ValueError("book quantity cannot be negative")
                     result[price] = quantity
@@ -466,9 +552,9 @@ class PolyUsWebsocketClient(WebsocketClient):
         try:
             self.queue.put_nowait(LiteOrderBookSnapshotEvent(
                 **event_fields,
-                best_bid=self._amount(payload["bestBid"]) if payload.get("bestBid") is not None else None,
-                best_ask=self._amount(payload["bestAsk"]) if payload.get("bestAsk") is not None else None,
-                last_price=self._amount(payload["currentPx"] if payload.get("currentPx") is not None else payload["lastTradePx"])
+                best_bid=_numeric_amount(payload["bestBid"]) if payload.get("bestBid") is not None else None,
+                best_ask=_numeric_amount(payload["bestAsk"]) if payload.get("bestAsk") is not None else None,
+                last_price=_numeric_amount(payload["currentPx"] if payload.get("currentPx") is not None else payload["lastTradePx"])
                 if payload.get("currentPx") is not None or payload.get("lastTradePx") is not None else None,
             ))
         except (AttributeError, TypeError, ValueError) as exc:
@@ -492,8 +578,8 @@ class PolyUsWebsocketClient(WebsocketClient):
             self.queue.put_nowait(TradeEvent(
                 **event_fields,
                 trade_id=payload.get("tradeId"),
-                price=self._amount(payload["price"]),
-                quantity=self._amount(payload["quantity"]),
+                price=_numeric_amount(payload["price"]),
+                quantity=_numeric_amount(payload["quantity"]),
                 side=Side.BUY if taker_side == "ORDER_SIDE_BUY" else Side.SELL,
             ))
         except (AttributeError, TypeError, ValueError) as exc:
@@ -510,8 +596,11 @@ class PolyUsWebsocketClient(WebsocketClient):
             raise ValueError("order has missing or unknown intent")
         if not isinstance(raw.get("id"), str) or not raw["id"]:
             raise ValueError("order has no ID")
-        size = raw.get("leavesQuantity", raw.get("quantity", raw.get("cumQuantity")))
-        if size is None or "price" not in raw or not raw.get("state") or not raw.get("tif"):
+        try:
+            size, filled_quantity = _order_size_and_filled(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("order has missing quantity fields") from exc
+        if "price" not in raw or not raw.get("state") or not raw.get("tif"):
             raise ValueError("order is missing price, quantity, state, or time-in-force")
         outcome, side = self._INTENT_MAP[intent]
         tif = self._websocket_tif(raw["tif"])
@@ -520,9 +609,10 @@ class PolyUsWebsocketClient(WebsocketClient):
         return OrderRecord(
             order_id=raw["id"], market_id=market_id,
             exchange="POLYMARKET_US", outcome=outcome, side=side,
-            size=self._amount(size), price=self._amount(raw["price"]),
+            size=size, price=_numeric_amount(raw["price"]),
             status=self._websocket_order_status(raw["state"]),
             tif=tif,
+            filled_quantity=filled_quantity,
         )
 
     @staticmethod
@@ -555,23 +645,24 @@ class PolyUsWebsocketClient(WebsocketClient):
         if not isinstance(payload, dict) or not isinstance(payload.get("orders"), list) or not isinstance(payload.get("eof"), bool):
             logger.warning("Dropping malformed Polymarket US order snapshot")
             return
-        orders = []
-        skipped_order = False
         for raw_order in payload.get("orders", []):
             try:
                 order = await self._to_order_record(raw_order)
                 if order is not None:
-                    orders.append(order)
+                    self._order_snapshot_orders.append(order)
                 else:
-                    skipped_order = True
+                    self._order_snapshot_skipped = True
             except (AttributeError, TypeError, ValueError) as exc:
-                skipped_order = True
+                self._order_snapshot_skipped = True
                 logger.warning("Skipping malformed Polymarket US order in snapshot: %s", exc)
-        self.queue.put_nowait(OrderSnapshotEvent(
-            exchange="POLYMARKET_US", timestamp=time.time(),
-            orders=orders,
-            complete=payload["eof"] and not skipped_order,
-        ))
+        if payload["eof"]:
+            self.queue.put_nowait(OrderSnapshotEvent(
+                exchange="POLYMARKET_US", timestamp=time.time(),
+                orders=list(self._order_snapshot_orders),
+                complete=not self._order_snapshot_skipped,
+            ))
+            self._order_snapshot_orders.clear()
+            self._order_snapshot_skipped = False
 
     async def _handle_order_update(self, message: Dict) -> None:
         payload = message.get("orderSubscriptionUpdate") if isinstance(message, dict) else None
@@ -588,11 +679,12 @@ class PolyUsWebsocketClient(WebsocketClient):
             if execution.get("lastShares") is not None:
                 if execution.get("lastPx") is None:
                     raise ValueError("execution has lastShares but no lastPx")
-                fill_quantity = self._amount(execution["lastShares"])
-                fill_price = self._amount(execution["lastPx"])
+                fill_quantity = _numeric_amount(execution["lastShares"])
+                fill_price = _numeric_amount(execution["lastPx"])
             self.queue.put_nowait(OrderUpdateEvent(
                 exchange="POLYMARKET_US", timestamp=time.time(), order=order,
                 fill_quantity=fill_quantity, fill_price=fill_price,
+                execution_id=execution.get("executionId") or execution.get("tradeId"),
             ))
         except (AttributeError, TypeError, ValueError) as exc:
             logger.warning("Dropping malformed Polymarket US order update: %s", exc)
@@ -654,15 +746,15 @@ class PolyUsWebsocketClient(WebsocketClient):
         net_value = after.get("netPositionDecimal", after.get("netPosition"))
         if net_value is None:
             raise ValueError("position has no net position")
-        net = self._amount(net_value)
+        net = _numeric_amount(net_value)
         if net == 0:
             return None
         outcome = "YES" if net > 0 else "NO"
-        quantity_bought = self._amount(after.get("qtyBoughtDecimal", abs(net)))
+        quantity_bought = _numeric_amount(after.get("qtyBoughtDecimal", abs(net)))
         cost_value = after.get("cost")
         if cost_value is None:
             raise ValueError("position has no cost")
-        cost = self._amount(cost_value)
+        cost = _numeric_amount(cost_value)
         if quantity_bought <= 0 or cost < 0:
             raise ValueError("position quantity must be positive and cost cannot be negative")
         return Position(
@@ -684,7 +776,7 @@ class PolyUsWebsocketClient(WebsocketClient):
                 amount = item.get("buyingPower", item.get("currentBalance"))
                 if amount is None:
                     raise ValueError("balance requires buyingPower/currentBalance")
-                balances[item["currency"]] = self._amount(amount)
+                balances[item["currency"]] = _numeric_amount(amount)
             except (AttributeError, TypeError, ValueError) as exc:
                 logger.warning("Skipping malformed Polymarket US balance snapshot item: %s", exc)
         self.queue.put_nowait(BalanceSnapshotEvent(
@@ -704,7 +796,7 @@ class PolyUsWebsocketClient(WebsocketClient):
                 raise ValueError("balance has no amount")
             self.queue.put_nowait(BalanceUpdateEvent(
                 exchange="POLYMARKET_US", timestamp=self._timestamp(change.get("updateTime")),
-                currency=after["currency"], balance=self._amount(amount),
+                currency=after["currency"], balance=_numeric_amount(amount),
             ))
         except (AttributeError, TypeError, ValueError) as exc:
             logger.warning("Dropping malformed Polymarket US balance update: %s", exc)
@@ -742,8 +834,8 @@ class PolyUsWebsocketClient(WebsocketClient):
                 trade = TradeEvent(
                     exchange="POLYMARKET_US", timestamp=self._timestamp(raw_trade.get("executedTime")),
                     market_id=market_id, outcome="UNKNOWN",
-                    trade_id=raw_trade.get("tradeId"), price=self._amount(raw_trade.get("price")),
-                    quantity=self._amount(raw_trade.get("qtyDecimal")),
+                    trade_id=raw_trade.get("tradeId"), price=_numeric_amount(raw_trade.get("price")),
+                    quantity=_numeric_amount(raw_trade.get("qtyDecimal")),
                     side=Side.BUY if aggressor_side == "SIDE_BUY" else Side.SELL,
                 )
             except (AttributeError, TypeError, ValueError) as exc:
@@ -777,7 +869,12 @@ class PolyUsWebsocketClient(WebsocketClient):
                 slug = cached_slug
             self._market_id_by_slug[slug] = market_id
             await self.websocket.add_market_subscription(
-                {"SUBSCRIPTION_TYPE_MARKET_DATA"}, slug
+                {
+                    "SUBSCRIPTION_TYPE_MARKET_DATA",
+                    "SUBSCRIPTION_TYPE_MARKET_DATA_LITE",
+                    "SUBSCRIPTION_TYPE_TRADE",
+                },
+                slug,
             )
 
     async def run(self) -> None:

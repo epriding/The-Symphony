@@ -46,6 +46,7 @@ class PolyUSWebsocket():
         }
         self.private_subscriptions: Dict[str, str] = {
             'orders': 'SUBSCRIPTION_TYPE_ORDER',
+            'order_snapshot': 'SUBSCRIPTION_TYPE_ORDER_SNAPSHOT',
             'positions': 'SUBSCRIPTION_TYPE_POSITION',
             'balance': 'SUBSCRIPTION_TYPE_ACCOUNT_BALANCE',
             'rfq': 'SUBSCRIPTION_TYPE_RFQ',

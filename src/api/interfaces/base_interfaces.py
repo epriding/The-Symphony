@@ -24,6 +24,11 @@ class RestClient(ABC):
         pass
 
     @abstractmethod
+    async def get_order(self, order_id: str) -> OrderRecord | None:
+        """Fetch an individual order, including its final cumulative fill state."""
+        pass
+
+    @abstractmethod
     async def place_order(self, order: OrderIntent) -> OrderRecord:
         pass
 

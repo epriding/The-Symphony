@@ -25,7 +25,8 @@ class PaperTradingEngine:
             price=fill_price,
             status=OrderStatus.FILLED,
             strategy=order.strategy,
-            tif=order.tif
+            tif=order.tif,
+            filled_quantity=order.size,
         )
 
     async def update_pnl(self) -> None:

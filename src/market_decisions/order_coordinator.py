@@ -21,21 +21,19 @@ class OrderCoordinator:
 
     async def submit(self, order: OrderIntent) -> Optional[OrderRecord]:
         async with self.lock:
-
             if not self.risk.check_trade_allowed(order=order):
+                return None
 
-                if self.state.paper_trading[order.strategy]:
-                    market = self.state.markets[f"{order.exchange}:{order.market_id}"]
-                    record = await self.paper_engine.simulate_fill(order, market)
-                else:
-                    #need the polymarket us adapter for the api
-                    pass
+            if self.state.paper_trading[order.strategy]:
+                market = self.state.markets[f"{order.exchange}:{order.market_id}"]
+                record = await self.paper_engine.simulate_fill(order, market)
+                await self._apply_fill(record)
+            else:
+                record = await self.client.place_order(order)
 
-                if record.status == OrderStatus.FILLED:
-                    await self._apply_fill(record)
-
+            if record is not None:
                 await self.state.update_open_order(record)
-                return record
+            return record
 
     def _merge_position(self, existing: Optional[Position], order: OrderRecord) -> Optional[Position]:
         """Net YES and NO contract exposure into one market position."""
@@ -92,13 +90,24 @@ class OrderCoordinator:
 
 
     async def _apply_fill(self, order: OrderRecord) -> None:
-        key = self.state._position_key(order.market_id, order.exchange, order.strategy)
+        """Apply the quantity in ``size`` as one fill delta.
 
-        result = self._merge_position(self.state.positions.get(key), order)
-        if result is None:
-            await self.state.remove_position(order.market_id, order.exchange, order.strategy)
-        else:
-            await self.state.update_position(result)
+        ``filled_quantity`` is cumulative order state and must not be added to
+        positions directly; callers pass only the newly filled amount in size.
+        """
+        #if the strategy is not set, it automatically skips it just for safety
+        if not order.strategy:
+            logger.warning("Order %s has no strategy set, skipping _apply_fill", order.order_id)
+            return
+
+        if self.state.paper_trading.get(order.strategy, False):
+            key = self.state._position_key(order.market_id, order.exchange, order.strategy)
+
+            result = self._merge_position(self.state.positions.get(key), order)
+            if result is None:
+                await self.state.remove_position(order.market_id, order.exchange, order.strategy)
+            else:
+                await self.state.update_position(result)
 
         strategy_key = self.state._strategy_position_key(order.market_id, order.exchange)
         strategy_existing = self.state.strategy_positions.get(order.strategy, {}).get(strategy_key)
@@ -109,6 +118,11 @@ class OrderCoordinator:
         else:
             await self.state.update_strategy_position(strategy_result)
 
+    async def apply_fill(self, order: OrderRecord) -> None:
+        """Apply an exchange-reported fill using the same accounting as submissions."""
+        async with self.lock:
+            await self._apply_fill(order)
+
     async def cancel(self, order_id: str) -> None:
         raise NotImplementedError
 
@@ -118,60 +132,36 @@ class OrderCoordinator:
             live_orders = await self.client.get_open_orders()
             live_orders_by_keys = {f"{o.exchange}:{o.order_id}": o for o in live_orders}
 
-            stale_orders = {}
             for k, o in self.state.open_orders.items():
                 if self.state.paper_trading.get(o.strategy, False):
                     continue
                 live_o = live_orders_by_keys.get(k)
-                if live_o is None or abs(o.size - live_o.size) > 1e-9:
-                    stale_orders[k] = o
-
-            for p in live_positions:
-                strategy_key = self.state._strategy_position_key(p.market_id, p.exchange)
-                local_key = f"LIVE:{p.exchange}:{p.market_id}"
-                existing = self.state.positions.get(local_key)
-                difference = self.state._signed_position_size(p) - (
-                    self.state._signed_position_size(existing) if existing else 0.0
-                )
-
-                if abs(difference) < 1e-9:
-                    continue  # already position size is in sync
-
-                match_key = None
-                for order_key, o in stale_orders.items():
-                    if self.state._strategy_position_key(o.market_id, o.exchange) != strategy_key:
+                if live_o is None:
+                    # The open-orders endpoint omits completed/canceled orders.
+                    # Ask the exchange for this exact order before attributing fills.
+                    live_o = await self.client.get_order(o.order_id)
+                    if live_o is None:
+                        logger.warning(
+                            "Order %s is no longer open and Polymarket could not retrieve it; "
+                            "no fill will be attributed from position changes",
+                            o.order_id,
+                        )
                         continue
-                    signed_order_size = self._signed_order_size(o)
-                    if signed_order_size * difference <= 0:
-                        continue
-                    if abs(o.size - abs(difference)) < 1e-6:
-                        match_key = order_key
-                        break
-                    if abs(difference) < o.size and match_key is None:
-                        match_key = order_key
 
-                if match_key is None:
-                    #genuine order orphan
-                    continue  # genuine orphan (or difference > o.size)
+                # For orders still open, cumQuantity is the authoritative fill
+                # counter. The same cumulative counter is checked on individually
+                # retrieved terminal orders, avoiding position-change guesses.
+                previous_filled = o.filled_quantity or 0.0
+                current_filled = live_o.filled_quantity
+                if current_filled is None or current_filled <= previous_filled + 1e-9:
+                    continue
 
-                o = stale_orders.pop(match_key)
-                filled_size = min(abs(difference), o.size)
-                remaining = o.size - filled_size
-
+                fill_size = current_filled - previous_filled
                 await self._apply_fill(OrderRecord(
                     order_id=o.order_id, market_id=o.market_id, exchange=o.exchange,
-                    outcome=o.outcome, side=o.side, size=filled_size, price=o.price,
-                    status=OrderStatus.FILLED, strategy=o.strategy, tif=o.tif
+                    outcome=o.outcome, side=o.side, size=fill_size, price=live_o.price,
+                    status=OrderStatus.FILLED, strategy=o.strategy, tif=o.tif,
+                    filled_quantity=current_filled,
                 ))
-
-                if remaining < 1e-6:
-                    await self.state.remove_open_order(o.order_id, o.exchange)
-                else:
-                    await self.state.update_open_order(OrderRecord(
-                        order_id=o.order_id, market_id=o.market_id, exchange=o.exchange,
-                        outcome=o.outcome, side=o.side, size=remaining, price=o.price,
-                        status=OrderStatus.PARTIALLY_FILLED, strategy=o.strategy, tif=o.tif
-                    ))
-                difference -= (1.0 if difference > 0 else -1.0) * filled_size
 
             await self.state.reconcile(live_positions, live_orders)

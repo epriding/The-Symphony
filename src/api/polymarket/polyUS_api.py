@@ -1,4 +1,5 @@
 from polymarket_us import AsyncPolymarketUS
+from polymarket_us.errors import NotFoundError
 from typing import Dict
 from ...utilities.logger import setup_logger
 import dotenv
@@ -165,6 +166,13 @@ class PolymarketAPI():
         """Gets all open orders"""
         response = await self.client.orders.list()
         return response
+
+    async def get_order(self, order_id: str):
+        """Fetch one order, including its final state when it is no longer open."""
+        try:
+            return await self.client.orders.retrieve(order_id)
+        except NotFoundError:
+            return None
 
     async def get_positions(self, limit: int = None, cursor: str = None):
         if limit is not None and cursor is not None:

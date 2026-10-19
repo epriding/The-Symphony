@@ -28,6 +28,7 @@ class OrderUpdateEvent(PrivateEvent):
     order: "OrderRecord"
     fill_quantity: Optional[float] = None
     fill_price: Optional[float] = None
+    execution_id: Optional[str] = None
 
 @dataclass(frozen=True)
 class PositionSnapshotEvent(PrivateEvent):
@@ -176,6 +177,7 @@ class OrderRecord:
     status: OrderStatus = OrderStatus.NEW
     strategy: str = ""
     tif: TimeInForce = TimeInForce.FOK
+    filled_quantity: Optional[float] = None
 
 
 @dataclass
@@ -211,3 +213,4 @@ class Snapshot:
     open_orders: Dict[str, OrderRecord]          # from state.open_orders
     balance: Dict[str, float]                    # from state.balance
     exposure: float                              # derived, see below
+    market_quotes: Dict[str, LiteOrderBookSnapshotEvent] = field(default_factory=dict)

@@ -1,7 +1,10 @@
 from __future__ import annotations
 from typing import Dict, Any, List, TYPE_CHECKING
 import asyncio
-from .classes import Position, OrderRecord, MarketInfo, Snapshot, OrderBook
+from .classes import (
+    Position, OrderRecord, MarketInfo, Snapshot, OrderBook,
+    LiteOrderBookSnapshotEvent,
+)
 import time
 
 if TYPE_CHECKING:
@@ -16,6 +19,8 @@ class TradingState:
     def __init__(self, risk_manager: RiskManager):
         self.markets: Dict[str, MarketInfo] = {}
         self.orderbooks: Dict[str, OrderBook] = {}
+        self.market_quotes: Dict[str, LiteOrderBookSnapshotEvent] = {}
+        self._market_price_timestamps: Dict[str, float] = {}
         self.positions: Dict[str, Position] = {}
         self.strategy_positions: Dict[str, Dict[str, Position]] = {}  # strategy -> {key: Position}
         self.open_orders: Dict[str, OrderRecord] = {}
@@ -74,18 +79,105 @@ class TradingState:
 
     async def update_orderbook(self, orderbook: OrderBook) -> None:
         async with self.lock:
-            self.orderbooks[f"{orderbook.exchange}:{orderbook.market_id}:{orderbook.outcome}"] = orderbook
+            key = f"{orderbook.exchange}:{orderbook.market_id}:{orderbook.outcome}"
+            existing = self.orderbooks.get(key)
+            if existing is None or orderbook.timestamp >= existing.timestamp:
+                self.orderbooks[key] = orderbook
+
+    async def update_market_quote(self, quote: LiteOrderBookSnapshotEvent) -> None:
+        async with self.lock:
+            key = f"{quote.exchange}:{quote.market_id}:{quote.outcome}"
+            existing = self.market_quotes.get(key)
+            if existing is not None and existing.timestamp > quote.timestamp:
+                return
+            self.market_quotes[key] = quote
+            if quote.last_price is not None:
+                self._market_price_timestamps[key] = quote.timestamp
+                market = self.markets.get(f"{quote.exchange}:{quote.market_id}")
+                if market is not None:
+                    market.prices[quote.outcome] = quote.last_price
+
+    async def update_market_price(
+        self, market_id: str, exchange: str, outcome: str, price: float,
+        timestamp: float,
+    ) -> None:
+        async with self.lock:
+            key = f"{exchange}:{market_id}:{outcome}"
+            if self._market_price_timestamps.get(key, float("-inf")) > timestamp:
+                return
+            self._market_price_timestamps[key] = timestamp
+            market = self.markets.get(f"{exchange}:{market_id}")
+            if market is not None:
+                market.prices[outcome] = price
 
     async def update_open_order(self, order: OrderRecord) -> None:
         """Adds or overwrites a single open order."""
         async with self.lock:
             self.open_orders[f"{order.exchange}:{order.order_id}"] = order
 
+    async def apply_order_snapshot(self, exchange: str, orders: List[OrderRecord], complete: bool) -> None:
+        """Replace live orders for an exchange only after a complete snapshot."""
+        if not complete:
+            return
+        async with self.lock:
+            prefix = f"{exchange}:"
+            retained = {
+                key: order for key, order in self.open_orders.items()
+                if not key.startswith(prefix) or self.paper_trading.get(order.strategy, False)
+            }
+            snapshot_orders = {}
+            for order in orders:
+                key = f"{order.exchange}:{order.order_id}"
+                existing = self.open_orders.get(key)
+                if existing is not None:
+                    order.strategy = existing.strategy
+                    if order.filled_quantity is None:
+                        order.filled_quantity = existing.filled_quantity
+                snapshot_orders[key] = order
+            self.open_orders = {**retained, **snapshot_orders}
+
     async def remove_open_order(self, order_id: str, exchange: str) -> None:
         """Removes an order, e.g. once filled or cancelled."""
         async with self.lock:
             key = f"{exchange}:{order_id}"
             self.open_orders.pop(key, None)
+
+    async def update_live_position(self, position: Position) -> None:
+        """Replace the exchange aggregate position, separate from strategy attribution."""
+        async with self.lock:
+            key = f"LIVE:{position.exchange}:{position.market_id}"
+            existing = self.positions.get(key)
+            if existing is not None:
+                position.strategy = existing.strategy
+            self.positions[key] = position
+
+    async def remove_live_position(self, market_id: str, exchange: str) -> None:
+        async with self.lock:
+            self.positions.pop(f"LIVE:{exchange}:{market_id}", None)
+
+    async def apply_live_position_snapshot(self, positions: List[Position], exchange: str) -> None:
+        """Replace positions for one exchange while retaining paper and other exchange state."""
+        async with self.lock:
+            retained = {
+                key: position for key, position in self.positions.items()
+                if not key.startswith(f"LIVE:{exchange}:")
+            }
+            replacements = {}
+            for position in positions:
+                key = f"LIVE:{position.exchange}:{position.market_id}"
+                existing = self.positions.get(key)
+                if existing is not None:
+                    position.strategy = existing.strategy
+                replacements[key] = position
+            self.positions = {**retained, **replacements}
+
+    async def replace_balances(self, balances: Dict[str, float]) -> None:
+        async with self.lock:
+            self.balance = dict(balances)
+
+    async def update_balance(self, currency: str, balance: float) -> None:
+        async with self.lock:
+            self.balance[currency] = balance
 
     async def reconcile(self, positions: List[Position], orders: List[OrderRecord]) -> None:
         async with self.lock:
@@ -158,7 +250,8 @@ class TradingState:
             positions=self.positions,
             open_orders=self.open_orders,
             balance=self.balance,
-            exposure=self.risk_manager.get_exposure(self)
+            exposure=self.risk_manager.get_exposure(self),
+            market_quotes=self.market_quotes,
 
         )
 
