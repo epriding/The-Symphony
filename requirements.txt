@@ -1,3 +1,4 @@
+polymarket-us==0.1.2
 polymarket-apis>=0.1.0
 web3>=6.0.0
 eth-account>=0.8.0

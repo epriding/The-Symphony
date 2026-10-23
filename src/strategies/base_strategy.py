@@ -1,6 +1,6 @@
 from ..utilities.trading_state import TradingState
-from ..utilities.classes import OrderIntent
-from typing import Dict, Any, List
+from ..utilities.classes import OrderIntent, Snapshot
+from typing import List
 from ..market_decisions.risk_manager import RiskManager
 from ..market_decisions.order_coordinator import OrderCoordinator
 
@@ -13,5 +13,5 @@ class Strategy:
         self.risk = risk
         self.coordinator = coordinator
 
-    async def on_snapshot(self, snapshot: Dict[str, Any]) -> List[OrderIntent]:
+    async def on_snapshot(self, snapshot: Snapshot) -> List[OrderIntent]:
         raise NotImplementedError

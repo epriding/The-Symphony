@@ -1,167 +1,323 @@
-from  ..api.interfaces.base_interfaces import RestClient
-from ..market_decisions.risk_manager import RiskManager
-from ..utilities.trading_state import TradingState
-from ..utilities.classes import OrderIntent, OrderRecord, Position, OrderStatus, Side
-from ..paper_trading.paper_trading_engine import PaperTradingEngine
-from ..utilities.logger import setup_logger
-from typing import Optional
+"""The sole submission gateway. All fill sources share the same ledger."""
 import asyncio
+from copy import deepcopy
+from dataclasses import replace
+
+from ..paper_trading.paper_trading_engine import PaperTradingEngine
+from ..utilities.classes import (
+    OrderIntent,
+    OrderIntentBatch,
+    OrderNotSubmittedError,
+    OrderStatus,
+    RiskDecision,
+    SubmissionResult,
+    TERMINAL_ORDER_STATUSES,
+)
+from ..utilities.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-class OrderCoordinator:
-    """Serializes all order actions and maintains local correctness."""
 
-    def __init__(self, client: RestClient, risk: RiskManager, state: TradingState, paper_engine: PaperTradingEngine):
-        self.client = client
-        self.risk = risk
+class OrderCoordinator:
+    def __init__(self, state, clients=None, paper_engine=None):
         self.state = state
-        self.paper_engine = paper_engine
+        self.clients = clients or {}
+        self.paper_engine = paper_engine or PaperTradingEngine()
+        # This lock serializes submissions and account events. The separate state
+        # lock is released during network calls so market data can keep updating.
         self.lock = asyncio.Lock()
 
-    async def submit(self, order: OrderIntent) -> Optional[OrderRecord]:
+    def _rejected(self, reason: str) -> SubmissionResult:
+        return SubmissionResult(RiskDecision(False, reason))
+
+    async def submit(self, intent: OrderIntent) -> SubmissionResult:
         async with self.lock:
-            if not self.risk.check_trade_allowed(order=order):
-                return None
+            portfolio_id = self.state.portfolio_for_strategy(intent.strategy)
+            if portfolio_id is None:
+                return self._rejected("unknown_strategy_route")
+            portfolio = self.state.portfolios[portfolio_id]
+            if not portfolio.paper and intent.exchange not in self.clients:
+                return self._rejected("missing_exchange_client")
 
-            if self.state.paper_trading[order.strategy]:
-                market = self.state.markets[f"{order.exchange}:{order.market_id}"]
-                record = await self.paper_engine.simulate_fill(order, market)
-                await self._apply_fill(record)
-            else:
-                record = await self.client.place_order(order)
+            async with self.state.lock:
+                self.state._refresh_performance()
+                manager = self.state.risk_managers[portfolio_id]
+                decision = manager.evaluate(intent, self.state._snapshot())
+                if not decision.approved:
+                    return SubmissionResult(decision)
+                self.state._reserve(decision)
+            return await self._send_reserved(decision)
 
-            if record is not None:
-                await self.state.update_open_order(record)
-            return record
+    async def submit_many(self, intents: list[OrderIntent]) -> list[SubmissionResult]:
+        """Submit independent opportunities in list order, reserving between them."""
+        results = []
+        for intent in intents:
+            results.append(await self.submit(intent))
+        return results
 
-    def _merge_position(self, existing: Optional[Position], order: OrderRecord) -> Optional[Position]:
-        """Net YES and NO contract exposure into one market position."""
-        incoming_sign = self._signed_order_size(order) / order.size if order.size else 0.0
-        incoming_outcome = "YES" if incoming_sign > 0 else "NO"
-        # Store prices in the units of the resulting net outcome. Selling either
-        # outcome is equivalent to buying its complement.
-        incoming_price = order.price if order.side == Side.BUY else 1.0 - order.price
-        if existing is None:
-            return Position(
-                market_id=order.market_id,
-                exchange=order.exchange,
-                outcome=incoming_outcome,
-                size=order.size,
-                entry_price=incoming_price,
-                side=Side.BUY,
-                strategy=order.strategy,
-            )
-        existing_signed_size = self.state._signed_position_size(existing)
-        incoming_signed_size = self._signed_order_size(order)
-        if existing_signed_size * incoming_signed_size > 0:
-            total_size = existing.size + order.size
-            avg_price = (
-                existing.entry_price * existing.size + incoming_price * order.size
-            ) / total_size
-            existing.size = total_size
-            existing.outcome = incoming_outcome
-            existing.side = Side.BUY
-            existing.entry_price = avg_price
-            return existing
-
-        remaining = existing.size - order.size
-        if remaining > 1e-12:
-            existing.size = remaining
-            return existing
-        if abs(remaining) <= 1e-12:
-            return None
-        return Position(
-            market_id=order.market_id,
-            exchange=order.exchange,
-            outcome=incoming_outcome,
-            size=abs(remaining),
-            entry_price=incoming_price,
-            side=Side.BUY,
-            strategy=order.strategy,
+    def _revalidate(self, order) -> bool:
+        """Recheck an approval without counting its own reservation against it."""
+        if self.state.clock() >= order.approved_until:
+            return False
+        snapshot = self.state._snapshot()
+        portfolio = snapshot.portfolios[order.portfolio_id]
+        portfolio.processed_intents.discard(order.intent_id)
+        portfolio.reservations.pop(order.intent_id, None)
+        manager = self.state.risk_managers[order.portfolio_id]
+        decision = manager.evaluate(
+            order.intent, snapshot,
+            group_budget=order.commitment, group_quantity=order.size,
         )
+        return decision.approved and decision.orders[0].size + 1e-9 >= order.size
 
-    @staticmethod
-    def _signed_order_size(order: OrderRecord) -> float:
-        direction = 1.0 if order.outcome.upper() == "YES" else -1.0
-        if order.side == Side.SELL:
-            direction *= -1.0
-        return direction * order.size
+    async def _send_reserved(self, decision: RiskDecision) -> SubmissionResult:
+        order = decision.orders[0]
+        async with self.state.lock:
+            if not self._revalidate(order):
+                self.state._release(order)
+                return self._rejected("approval_no_longer_valid")
+            portfolio = self.state.portfolios[order.portfolio_id]
+            paper = portfolio.paper
+            snapshot = self.state._snapshot()
+            market = snapshot.markets[f"{order.exchange}:{order.market_id}"]
+            manager = self.state.risk_managers[order.portfolio_id]
+            quote = manager.quote(
+                snapshot, order.exchange, order.market_id, order.outcome, order.side,
+            )
 
-
-    async def _apply_fill(self, order: OrderRecord) -> None:
-        """Apply the quantity in ``size`` as one fill delta.
-
-        ``filled_quantity`` is cumulative order state and must not be added to
-        positions directly; callers pass only the newly filled amount in size.
-        """
-        #if the strategy is not set, it automatically skips it just for safety
-        if not order.strategy:
-            logger.warning("Order %s has no strategy set, skipping _apply_fill", order.order_id)
-            return
-
-        if self.state.paper_trading.get(order.strategy, False):
-            key = self.state._position_key(order.market_id, order.exchange, order.strategy)
-
-            result = self._merge_position(self.state.positions.get(key), order)
-            if result is None:
-                await self.state.remove_position(order.market_id, order.exchange, order.strategy)
+        try:
+            if paper:
+                incoming = await self.paper_engine.simulate_fill(order, market, quote)
             else:
-                await self.state.update_position(result)
+                incoming = await self.clients[order.exchange].place_order(order)
+            if incoming is None:
+                # Only a rejection record proves the venue rejected a submission.
+                raise RuntimeError("Submission returned no identifiable order")
 
-        strategy_key = self.state._strategy_position_key(order.market_id, order.exchange)
-        strategy_existing = self.state.strategy_positions.get(order.strategy, {}).get(strategy_key)
-        strategy_result = self._merge_position(strategy_existing, order)
+            async with self.state.lock:
+                expected = (order.exchange, order.market_id, order.outcome, order.side)
+                reported = (incoming.exchange, incoming.market_id, incoming.outcome, incoming.side)
+                if reported != expected or abs(incoming.size - order.size) > 1e-9:
+                    raise ValueError("Exchange response does not match approved order")
+                record = self.state._apply_order_update(incoming, approved=order)
+                self.state._refresh_performance()
+            status = "exchange_rejected" if record.status == OrderStatus.REJECTED else "submitted"
+            return SubmissionResult(decision, [deepcopy(record)], status)
+        except BaseException as error:
+            # Cancellation also needs accounting cleanup before it propagates.
+            async with self.state.lock:
+                if paper or isinstance(error, OrderNotSubmittedError):
+                    self.state._release(order)
+                else:
+                    portfolio.unresolved_intents.add(order.intent_id)
+            if isinstance(error, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                raise
+            if isinstance(error, OrderNotSubmittedError):
+                return self._rejected("submission_not_sent")
+            logger.exception("Submission failed for intent %s", order.intent_id)
+            status = "failed" if paper else "unknown"
+            return SubmissionResult(decision, status=status)
 
-        if strategy_result is None:
-            await self.state.remove_strategy_position(order.strategy, order.market_id, order.exchange)
-        else:
-            await self.state.update_strategy_position(strategy_result)
-
-    async def apply_fill(self, order: OrderRecord) -> None:
-        """Apply an exchange-reported fill using the same accounting as submissions."""
+    async def submit_batch(self, batch: OrderIntentBatch) -> SubmissionResult:
         async with self.lock:
-            await self._apply_fill(order)
+            routes = {self.state.portfolio_for_strategy(leg.strategy) for leg in batch.legs}
+            if len(routes) != 1 or None in routes:
+                return self._rejected("batch_requires_one_portfolio")
+            portfolio_id = next(iter(routes))
+            portfolio = self.state.portfolios[portfolio_id]
+            if not portfolio.paper or batch.execution_policy != "paper_all_or_none":
+                return self._rejected("unsupported_batch_execution_policy")
 
-    async def cancel(self, order_id: str) -> None:
-        raise NotImplementedError
+            async with self.state.lock:
+                self.state._refresh_performance()
+                manager = self.state.risk_managers[portfolio_id]
+                snapshot = self.state._snapshot()
+                decision = manager.evaluate_batch(batch, snapshot)
+                if not decision.approved:
+                    return SubmissionResult(decision)
+                self.state._reserve(decision)
+            try:
+                records = await self._simulate_paper_batch(decision, snapshot, manager)
+                async with self.state.lock:
+                    applied = self._apply_paper_batch(decision, records, portfolio_id)
+                    self.state._refresh_performance()
+                return SubmissionResult(decision, deepcopy(applied), "submitted")
+            except BaseException as error:
+                async with self.state.lock:
+                    for order in decision.orders:
+                        self.state._release(order)
+                if isinstance(error, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                    raise
+                logger.exception("Paper batch %s failed", batch.batch_id)
+                return SubmissionResult(decision, status="failed")
 
-    async def reconcile(self) -> None:
+    async def _simulate_paper_batch(self, decision, snapshot, manager):
+        records = []
+        for order in decision.orders:
+            market = snapshot.markets[f"{order.exchange}:{order.market_id}"]
+            quote = manager.quote(
+                snapshot, order.exchange, order.market_id, order.outcome, order.side,
+            )
+            records.append(await self.paper_engine.simulate_fill(order, market, quote))
+        return records
+
+    def _apply_paper_batch(self, decision, records, portfolio_id):
+        """Apply every leg or restore the portfolio; caller holds the state lock."""
+        if any(not self._revalidate(order) for order in decision.orders):
+            raise ValueError("Batch approval expired or changed")
+        backup = deepcopy(self.state.portfolios[portfolio_id])
+        try:
+            applied = []
+            for order, record in zip(decision.orders, records):
+                applied.append(self.state._apply_order_update(record, approved=order))
+            return applied
+        except BaseException:
+            self.state.portfolios[portfolio_id] = backup
+            raise
+
+    async def apply_order_update(
+        self, order, *, fill_quantity=None, fill_price=None, execution_id=None,
+    ):
         async with self.lock:
-            live_positions = await self.client.get_positions()
-            live_orders = await self.client.get_open_orders()
-            live_orders_by_keys = {f"{o.exchange}:{o.order_id}": o for o in live_orders}
+            async with self.state.lock:
+                result = self.state._apply_order_update(
+                    order, fill_quantity=fill_quantity,
+                    fill_price=fill_price, execution_id=execution_id,
+                )
+                self.state._refresh_performance()
+                return deepcopy(result)
 
-            for k, o in self.state.open_orders.items():
-                if self.state.paper_trading.get(o.strategy, False):
+    async def apply_order_snapshot(self, orders, exchange, complete=True):
+        """A missing order is not evidence of cancellation or lack of fills."""
+        if not complete:
+            return
+        async with self.lock:
+            async with self.state.lock:
+                portfolio = self.state.portfolios["LIVE"]
+                for order in orders:
+                    if order.exchange != exchange:
+                        raise ValueError("Order snapshot exchange mismatch")
+                    self.state._apply_order_update(order)
+                portfolio.orders_ready.add(exchange)
+
+    async def cancel(self, order_id, exchange, portfolio_id="LIVE") -> bool:
+        async with self.lock:
+            async with self.state.lock:
+                portfolio = self.state.portfolios[portfolio_id]
+                order = deepcopy(portfolio.open_orders.get(f"{exchange}:{order_id}"))
+            if order is None:
+                return False
+            if portfolio.paper:
+                confirmed = replace(order, status=OrderStatus.CANCELED)
+            else:
+                client = self.clients[exchange]
+                await client.cancel_order(order_id, order.market_id)
+                # HTTP cancellation acknowledgment alone is insufficient.
+                confirmed = await client.get_order(order_id)
+            if confirmed is None:
+                return False
+            async with self.state.lock:
+                self.state._apply_order_update(confirmed)
+                if not portfolio.paper:
+                    portfolio.dirty_exchanges.add(exchange)
+            return confirmed.status in TERMINAL_ORDER_STATUSES
+
+    async def reconcile(self, exchange=None):
+        """Refresh one live venue at a time; retain unknown submissions."""
+        async with self.lock:
+            exchanges = [exchange] if exchange else list(self.clients)
+            for venue in exchanges:
+                await self._reconcile_exchange(venue)
+
+    async def _reconcile_exchange(self, exchange):
+        async with self.state.lock:
+            portfolio = self.state.portfolios["LIVE"]
+            portfolio.dirty_exchanges.add(exchange)
+            revision = portfolio.account_revisions.get(exchange, 0)
+            existing_orders = [
+                deepcopy(order) for order in portfolio.open_orders.values()
+                if order.exchange == exchange
+            ]
+
+        client = self.clients[exchange]
+        orders = await client.get_open_orders()
+        open_order_ids = {order.order_id for order in orders}
+        has_missing_orders = False
+        for previous in existing_orders:
+            if previous.order_id in open_order_ids:
+                continue
+            confirmed = await client.get_order(previous.order_id)
+            if confirmed is None:
+                has_missing_orders = True
+            else:
+                orders.append(confirmed)
+        # Read account inventory after fill counters, then cash. Private updates
+        # during these reads invalidate the result instead of mixing versions.
+        positions = await client.get_positions()
+        balances = await client.get_balance()
+
+        async with self.state.lock:
+            if portfolio.account_revisions.get(exchange, 0) != revision:
+                raise RuntimeError(f"{exchange} account changed during reconciliation; retry")
+            for order in orders:
+                self.state._apply_order_update(order)
+            self.state._replace_live_positions(positions, exchange)
+            if not self.state._replace_balances(balances, exchange):
+                raise RuntimeError(f"{exchange} reconciliation returned older balances; retry")
+            portfolio.orders_ready.add(exchange)
+            has_unknown_orders = any(
+                order.exchange == exchange and order.status == OrderStatus.UNKNOWN
+                for order in portfolio.open_orders.values()
+            )
+            if not has_missing_orders and not has_unknown_orders:
+                portfolio.dirty_exchanges.discard(exchange)
+            if self._ownership_exceeds_inventory(portfolio, exchange):
+                portfolio.dirty_exchanges.add(exchange)
+            self.state._refresh_performance()
+
+    def _ownership_exceeds_inventory(self, portfolio, exchange) -> bool:
+        """Compare gross strategy ownership with confirmed account inventory."""
+        for strategy_positions in portfolio.strategy_positions.values():
+            for key, position in strategy_positions.items():
+                if position.exchange != exchange:
                     continue
-                live_o = live_orders_by_keys.get(k)
-                if live_o is None:
-                    # The open-orders endpoint omits completed/canceled orders.
-                    # Ask the exchange for this exact order before attributing fills.
-                    live_o = await self.client.get_order(o.order_id)
-                    if live_o is None:
-                        logger.warning(
-                            "Order %s is no longer open and Polymarket could not retrieve it; "
-                            "no fill will be attributed from position changes",
-                            o.order_id,
-                        )
-                        continue
+                owned_quantity = sum(
+                    positions[key].size
+                    for positions in portfolio.strategy_positions.values()
+                    if key in positions
+                )
+                held = portfolio.positions.get(key)
+                if held is None or owned_quantity > held.size + 1e-9:
+                    return True
+        return False
 
-                # For orders still open, cumQuantity is the authoritative fill
-                # counter. The same cumulative counter is checked on individually
-                # retrieved terminal orders, avoiding position-change guesses.
-                previous_filled = o.filled_quantity or 0.0
-                current_filled = live_o.filled_quantity
-                if current_filled is None or current_filled <= previous_filled + 1e-9:
-                    continue
+    async def resolve_unknown(
+        self, intent_id, *, order=None, confirmed_absent=False, portfolio_id="LIVE",
+    ):
+        """Recover only after auditing venue history; open-order absence is not proof.
 
-                fill_size = current_filled - previous_filled
-                await self._apply_fill(OrderRecord(
-                    order_id=o.order_id, market_id=o.market_id, exchange=o.exchange,
-                    outcome=o.outcome, side=o.side, size=fill_size, price=live_o.price,
-                    status=OrderStatus.FILLED, strategy=o.strategy, tif=o.tif,
-                    filled_quantity=current_filled,
-                ))
-
-            await self.state.reconcile(live_positions, live_orders)
+        Supply the confirmed exchange order, or explicitly confirm its absence
+        after an audit. This SDK has no client-order-ID lookup for recovery.
+        """
+        async with self.lock:
+            async with self.state.lock:
+                portfolio = self.state.portfolios[portfolio_id]
+                approved = portfolio.reservations.get(intent_id)
+                if approved is None or intent_id not in portfolio.unresolved_intents:
+                    raise ValueError("Intent is not unresolved")
+                if order is not None:
+                    expected = (
+                        approved.exchange, approved.market_id, approved.outcome,
+                        approved.side, approved.size,
+                    )
+                    reported = (
+                        order.exchange, order.market_id, order.outcome,
+                        order.side, order.size,
+                    )
+                    if reported != expected:
+                        raise ValueError("Recovery order does not match approval")
+                    self.state._apply_order_update(order, approved=approved)
+                elif confirmed_absent:
+                    self.state._release(approved)
+                else:
+                    raise ValueError("Provide a confirmed order or audited absence")

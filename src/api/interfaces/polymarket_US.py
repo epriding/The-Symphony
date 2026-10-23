@@ -1,20 +1,22 @@
-from decimal import Decimal
-from typing import Optional, Tuple
+import asyncio
+from datetime import datetime
+import math
+import time
+from typing import Dict, List, Optional, Tuple
+
+from polymarket_us.errors import APIStatusError
+
 from .base_interfaces import WebsocketClient, RestClient
 from ..polymarket.polyUS_api import PolymarketAPI
 from ..polymarket.polyus_websocket import PolyUSWebsocket
-from typing import List, Dict
-import asyncio
-from datetime import datetime
 from ...utilities.classes import (
-    OrderIntent, OrderRecord, Position, MarketInfo, OrderBookSnapshotEvent,
+    ApprovedOrder, OrderNotSubmittedError, AccountBalance, AccountConnectionEvent,
+    OrderRecord, Position, MarketInfo, OrderBookSnapshotEvent,
     LiteOrderBookSnapshotEvent, TradeEvent, OrderSnapshotEvent,
     OrderUpdateEvent, PositionSnapshotEvent, PositionUpdateEvent, BalanceSnapshotEvent,
     BalanceUpdateEvent, RfqEvent, OrderBook, Side, OrderStatus, TimeInForce,
 )
 from ...utilities.logger import setup_logger
-import time
-import math
 
 
 logger = setup_logger(__name__)
@@ -76,13 +78,40 @@ def _order_size_and_filled(order):
     return size, filled
 
 
+def _account_balance(raw, cash_resolver=None):
+    """Never infer owned cash/equity from buying power.
+
+    cash_resolver(raw) must return USD cash INCLUDING order-held cash and
+    EXCLUDING position value. Without a verified mapping live entries stay closed.
+    """
+    buying_power = _numeric_amount(_order_field(raw, "buyingPower"))
+    current = _order_field(raw, "currentBalance")
+    reserved = _order_field(raw, "balanceReservation")
+    timestamp = _order_field(raw, "lastUpdated")
+    if timestamp is None:
+        stamp = time.time()
+    elif isinstance(timestamp, str):
+        stamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00")).timestamp()
+    else:
+        stamp = _numeric_amount(timestamp)
+    return AccountBalance(
+        buying_power=buying_power,
+        cash=_numeric_amount(cash_resolver(raw)) if cash_resolver else None,
+        timestamp=time.time(), source_timestamp=stamp, buying_power_includes_holds=True,
+        current_balance=_numeric_amount(current) if current is not None else None,
+        reserved_cash=_numeric_amount(reserved) if reserved is not None else None,
+    )
+
+
 class PolyUsClient(RestClient):
     def __init__(
         self,
         key_id: str,
         secret_key: str,
         market_id_by_slug: Optional[Dict[str, str]] = None,
+        cash_resolver=None,
     ):
+        self.cash_resolver = cash_resolver
         self.polymarket_api: PolymarketAPI = PolymarketAPI(key_id=key_id, secret_key=secret_key)
         self._slug_cache: Dict[str, str] = {}
         self._market_id_by_slug = market_id_by_slug if market_id_by_slug is not None else {}
@@ -124,30 +153,18 @@ class PolyUsClient(RestClient):
 
         markets = []
 
-        for market in market_details:
-            self._market_id_by_slug[market.slug] = market.id
-            self._slug_cache[market.id] = market.slug
-            yes_side, no_side = market.marketSides
-            market_info = MarketInfo(
-                market_id=market.id,
-                exchange="POLYMARKET_US",
-                slug=market.slug,
-                token_ids={
-                    yes_side.description.upper(): yes_side.id,
-                    no_side.description.upper(): no_side.id
-                },
-                active=market.active,
-                tradable={
-                    yes_side.description.upper(): yes_side.tradable,
-                    no_side.description.upper(): no_side.tradable
-                },
-                volume=market.volume,
-                prices={
-                    yes_side.description.upper(): yes_side.price,
-                    no_side.description.upper(): no_side.price
-                },
-            )
-            markets.append(market_info)
+        for raw in market_details:
+            market_id = str(_order_field(raw, "id"))
+            slug = _order_field(raw, "slug")
+            self._market_id_by_slug[slug] = market_id
+            self._slug_cache[market_id] = slug
+            active = bool(_order_field(raw, "active", False)) and not _order_field(raw, "closed", False)
+            markets.append(MarketInfo(
+                market_id=market_id, exchange="POLYMARKET_US", slug=slug,
+                token_ids={}, active=active, tradable={"YES": active, "NO": active},
+                volume=_numeric_amount(_order_field(raw, "volume", 0)),
+                category=_order_field(raw, "category", "other"),
+            ))
 
         return markets
 
@@ -167,10 +184,10 @@ class PolyUsClient(RestClient):
             return slug
 
         market = await self.polymarket_api.get_market(market_id=market_id)
-        self._slug_cache[market_id] = market.slug
-        self._market_id_by_slug[market.slug] = market.id
+        self._slug_cache[market_id] = _order_field(market, "slug")
+        self._market_id_by_slug[_order_field(market, "slug")] = str(_order_field(market, "id"))
 
-        return market.slug
+        return _order_field(market, "slug")
 
     async def _get_market_id(self, slug: str) -> str:
         market_id = self._market_id_by_slug.get(slug)
@@ -178,7 +195,7 @@ class PolyUsClient(RestClient):
             return market_id
 
         market = await self.polymarket_api.get_market_by_slug(slug=slug)
-        market_id = market.id
+        market_id = str(_order_field(market, "id"))
         self._market_id_by_slug[slug] = market_id
         self._slug_cache[market_id] = slug  # populate the reverse cache too
         return market_id
@@ -203,39 +220,24 @@ class PolyUsClient(RestClient):
             timestamp=time.time(),
         )
 
-    async def _to_position(self, raw_positions: Dict, strategy: str = "") -> List[Position]:
-        """Converts client.portfolio.positions() response into canonical Positions.
-        Outcome derived from sign of netPositionDecimal: positive = YES, negative = NO.
-        """
+    async def _to_position(self, raw_positions, strategy=""):
         positions = []
-
-        for slug, raw in raw_positions.get("positions", {}).items():
-            net_position = getattr(raw, "netPositionDecimal", None)
-            if net_position is None:
-                net_position = getattr(raw, "netPosition")
-            net = Decimal(str(net_position))
-            if net == 0:
+        for slug, raw in _order_field(raw_positions, "positions", {}).items():
+            net = _numeric_amount(_order_field(raw, "netPositionDecimal", _order_field(raw, "netPosition")))
+            if not net:
                 continue
-
-            outcome = "YES" if net > 0 else "NO"
-            size = abs(net)
-
-            qty_bought = Decimal(raw.qtyBoughtDecimal)
-            cost = Decimal(raw.cost) / Decimal(1_000_000)
-            entry_price = (cost / qty_bought) if qty_bought else Decimal(0)
-
-            market_id = await self._get_market_id(slug)
-
+            bought = _numeric_amount(_order_field(raw, "qtyBoughtDecimal", _order_field(raw, "qtyBought", abs(net))))
+            cost = _numeric_amount(_order_field(raw, "cost"))
+            if bought <= 0 or cost < 0:
+                raise ValueError("Invalid position cost/quantity")
+            entry = cost / bought
+            if not 0 <= entry <= 1:
+                raise ValueError("Position cost is not in normalized USD")
             positions.append(Position(
-                market_id=market_id,
-                exchange="POLYMARKET_US",
-                outcome=outcome,
-                size=float(size),
-                entry_price=float(entry_price),
-                side=Side.BUY,
-                strategy=strategy,
+                market_id=await self._get_market_id(slug), exchange="POLYMARKET_US",
+                outcome="YES" if net > 0 else "NO", size=abs(net), entry_price=entry,
+                side=Side.BUY, strategy=strategy,
             ))
-
         return positions
 
     async def get_orderbook(self, market_id: str, outcome: str) -> OrderBook:
@@ -255,126 +257,111 @@ class PolyUsClient(RestClient):
         status = self._STATUS_MAP.get(state)
 
         if status is None:
-            #log error for unknown status
             return OrderStatus.UNKNOWN
 
         return status
 
 
-
     def _get_tif(self, tif: str) -> TimeInForce:
         try:
-            time_in_force = self._TIF_MAP[tif]
-
-            return time_in_force
-
+            return self._TIF_MAP[tif]
         except KeyError:
-            #Log error
-            return TimeInForce.FOK  #returns default so entire order gets filled
+            raise ValueError(f"Unknown time-in-force {tif!r}")
 
-    async def get_open_orders(self) -> List[OrderRecord]:
-        raw = await self.polymarket_api.get_orders()
-        orders = []
-
-        for order in raw.get("orders", []):
-            outcome, side = self._INTENT_MAP[_order_field(order, "intent")]
-            size, filled_quantity = _order_size_and_filled(order)
-            price = _order_field(order, "price")
-            orders.append(OrderRecord(
-                order_id=_order_field(order, "id"),
-                market_id=await self._get_market_id(slug=_order_field(order, "marketSlug")),
-                exchange="POLYMARKET_US",
-                outcome=outcome,
-                side=side,
-                size=size,  # total/original order quantity
-                price=_numeric_amount(price),
-                status=self._get_order_state(state=_order_field(order, "state")),
-                strategy="",                        # exchange doesn't know strategies but state.reconcile carries it over
-                tif=self._get_tif(tif=_order_field(order, "tif")),
-                filled_quantity=filled_quantity,
-            ))
-
-        return orders
-
-    async def get_order(self, order_id: str) -> Optional[OrderRecord]:
-        raw_response = await self.polymarket_api.get_order(order_id)
-        if raw_response is None:
-            return None
-        raw = _order_field(raw_response, "order", raw_response)
+    async def _normalize_order(self, raw):
         intent = _order_field(raw, "intent")
         if intent not in self._INTENT_MAP:
-            raise ValueError(f"order {order_id} has missing or unknown intent")
-        slug = _order_field(raw, "marketSlug")
-        market_id = await self._resolve_order_market_id(raw, slug)
-        size, filled_quantity = _order_size_and_filled(raw)
+            raise ValueError("Missing/unknown exchange order intent")
+        size, filled = _order_size_and_filled(raw)
         outcome, side = self._INTENT_MAP[intent]
+        average = _order_field(raw, "avgPx")
+        fees = _order_field(raw, "commissionNotionalTotalCollected")
         return OrderRecord(
-            order_id=_order_field(raw, "id", order_id),
-            market_id=market_id,
-            exchange="POLYMARKET_US",
-            outcome=outcome,
-            side=side,
-            size=size,
+            order_id=_order_field(raw, "id"),
+            market_id=await self._resolve_order_market_id(raw, _order_field(raw, "marketSlug")),
+            exchange="POLYMARKET_US", outcome=outcome, side=side, size=size,
             price=_numeric_amount(_order_field(raw, "price")),
             status=self._get_order_state(_order_field(raw, "state")),
-            strategy="",
-            tif=self._get_tif(_order_field(raw, "tif")),
-            filled_quantity=filled_quantity,
+            tif=self._get_tif(_order_field(raw, "tif")), filled_quantity=filled,
+            average_fill_price=_numeric_amount(average) if average is not None else None,
+            fees_paid=_numeric_amount(fees) if fees is not None else None,
         )
+
+    async def get_open_orders(self):
+        response = await self.polymarket_api.get_orders()
+        return [await self._normalize_order(raw) for raw in _order_field(response, "orders", [])]
+
+    async def get_order(self, order_id):
+        response = await self.polymarket_api.get_order(order_id)
+        if response is None:
+            return None
+        return await self._normalize_order(_order_field(response, "order", response))
 
     async def _resolve_order_market_id(self, order, slug: Optional[str]) -> str:
         market_id = _order_field(order, "marketId")
         if market_id:
-            return market_id
+            return str(market_id)
         if not slug:
             raise ValueError("order is missing marketSlug and marketId")
         return await self._get_market_id(slug=slug)
 
-    async def place_order(self, order: OrderIntent) -> OrderRecord:
-        response = await self.polymarket_api.create_order(
-            slug=await self._get_slug(order.market_id),
-            intent=self._REVERSE_INTENT_MAP[(order.outcome, order.side)],
-            order_type=order.order_type,
-            price=order.price,
-            quantity=order.size,
-            tif=order.tif,
-            slippage=order.slippage,
-            currency="USD" #add a strategy config change in future maybe
+    async def place_order(self, order: ApprovedOrder) -> OrderRecord:
+        tif = {
+            TimeInForce.GTC: "TIME_IN_FORCE_GOOD_TILL_CANCEL",
+            TimeInForce.GTD: "TIME_IN_FORCE_GOOD_TILL_DATE",
+            TimeInForce.IOC: "TIME_IN_FORCE_IMMEDIATE_OR_CANCEL",
+            TimeInForce.FOK: "TIME_IN_FORCE_FILL_OR_KILL",
+        }[order.tif]
+        # The reference price and ticks together define the approved worst price.
+        slug = await self._get_slug(order.market_id)
+        if time.time() >= order.approved_until:
+            raise OrderNotSubmittedError("Approval expired during market lookup")
+        try:
+            response = await self.polymarket_api.create_order(
+                slug=slug,
+                intent=self._REVERSE_INTENT_MAP[(order.outcome, order.side)],
+                order_type=order.order_type.value, price=order.intent.price,
+                quantity=order.size, tif=tif, slippage=order.slippage,
+                currency="USD", good_till_date=order.good_till_date,
+            )
+        except APIStatusError as exc:
+            if exc.status_code not in (400, 401, 403, 404, 422, 429):
+                raise
+            return OrderRecord(
+                order_id=f"rejected:{order.intent_id}", market_id=order.market_id,
+                exchange=order.exchange, outcome=order.outcome, side=order.side,
+                size=order.size, price=order.price, status=OrderStatus.REJECTED,
+                tif=order.tif, filled_quantity=0,
+            )
+        executions = _order_field(response, "executions", [])
+        if isinstance(executions, dict):
+            executions = [executions]
+        payloads = [_order_field(execution, "order") for execution in executions]
+        payloads = [payload for payload in payloads if payload is not None]
+        if payloads:
+            payload = max(reversed(payloads), key=lambda item: _order_size_and_filled(item)[1] or 0)
+            return await self._normalize_order(payload)
+        order_id = _order_field(response, "id")
+        if not order_id:
+            raise ValueError("Submission returned no order ID")
+        record = await self.get_order(order_id)
+        if record:
+            return record
+        return OrderRecord(
+            order_id=order_id, market_id=order.market_id, exchange=order.exchange,
+            outcome=order.outcome, side=order.side, size=order.size, price=order.price,
+            status=OrderStatus.UNKNOWN, tif=order.tif,
         )
 
-        if 'error' in response:
-            #log an error and return none
-            return None
+    async def cancel_order(self, order_id, market_id):
+        await self.polymarket_api.cancel_order(order_id=order_id, slug=await self._get_slug(market_id))
 
-        executions = _order_field(response, "executions")
-        payload = _order_field(executions, "order")
-        outcome, side = self._INTENT_MAP[_order_field(payload, "intent")]
-        size, filled_quantity = _order_size_and_filled(payload)
-        record = OrderRecord(
-            order_id=_order_field(payload, "id"),
-            market_id=await self._get_market_id(slug=_order_field(payload, "marketSlug")),
-            exchange="POLYMARKET_US",
-            outcome=outcome,
-            side=side,
-            size=size,
-            price=_numeric_amount(_order_field(payload, "price")),
-            status=self._get_order_state(state=_order_field(payload, "state")),
-            strategy=order.strategy,
-            tif=self._get_tif(tif=_order_field(payload, "tif")),
-            filled_quantity=filled_quantity,
-        )
-
-        return record
-
-    async def cancel_order(self, order_id: str, market_id: str) -> None:
-        slug = await self._get_slug(market_id=market_id)
-        response = await self.polymarket_api.cancel_order(order_id=order_id, slug=slug)
-
-        return
-
-    async def get_balance(self) -> Dict[str, float]:
+    async def get_balance(self) -> Dict[str, AccountBalance]:
         response = await self.polymarket_api.get_balance()
-        return {"USD": float(response.buyingPower)}
+        return {
+            _order_field(raw, "currency"): _account_balance(raw, self.cash_resolver)
+            for raw in _order_field(response, "balances", [])
+        }
 
 
 class PolyUsWebsocketClient(WebsocketClient):
@@ -383,8 +370,10 @@ class PolyUsWebsocketClient(WebsocketClient):
         key_id: Optional[str],
         secret_key: Optional[str],
         market_id_by_slug: Optional[Dict[str, str]] = None,
+        cash_resolver=None,
     ):
         self._market_id_by_slug = market_id_by_slug if market_id_by_slug is not None else {}
+        self.cash_resolver = cash_resolver
         self._INTENT_MAP = {
             "ORDER_INTENT_BUY_LONG": ("YES", Side.BUY),
             "ORDER_INTENT_SELL_LONG": ("YES", Side.SELL),
@@ -406,6 +395,7 @@ class PolyUsWebsocketClient(WebsocketClient):
                 "account_balance_snapshot": self._handle_account_balance_snapshot,
                 "account_balance_update": self._handle_account_balance_update,
                 "rfq_event": self._handle_rfq_event,
+                "connection_state": self._handle_connection_state,
             },
         )
         self.queue: asyncio.Queue = asyncio.Queue()
@@ -446,8 +436,9 @@ class PolyUsWebsocketClient(WebsocketClient):
             return market_id
         try:
             market = await self.polymarket_api.get_market_by_slug(slug=slug)
-            resolved_id = getattr(market, "id", None)
-            resolved_slug = getattr(market, "slug", None)
+            resolved_id = _order_field(market, "id")
+            resolved_slug = _order_field(market, "slug")
+            resolved_id = str(resolved_id) if resolved_id is not None else None
             if not isinstance(resolved_id, str) or not resolved_id.strip():
                 raise ValueError("market lookup returned no ID")
             self._market_id_by_slug[slug] = resolved_id
@@ -613,6 +604,8 @@ class PolyUsWebsocketClient(WebsocketClient):
             status=self._websocket_order_status(raw["state"]),
             tif=tif,
             filled_quantity=filled_quantity,
+            average_fill_price=_numeric_amount(raw["avgPx"]) if raw.get("avgPx") is not None else None,
+            fees_paid=_numeric_amount(raw["commissionNotionalTotalCollected"]) if raw.get("commissionNotionalTotalCollected") is not None else None,
         )
 
     @staticmethod
@@ -750,12 +743,12 @@ class PolyUsWebsocketClient(WebsocketClient):
         if net == 0:
             return None
         outcome = "YES" if net > 0 else "NO"
-        quantity_bought = _numeric_amount(after.get("qtyBoughtDecimal", abs(net)))
+        quantity_bought = _numeric_amount(after.get("qtyBoughtDecimal", after.get("qtyBought", abs(net))))
         cost_value = after.get("cost")
         if cost_value is None:
             raise ValueError("position has no cost")
         cost = _numeric_amount(cost_value)
-        if quantity_bought <= 0 or cost < 0:
+        if quantity_bought <= 0 or cost < 0 or not 0 <= cost / quantity_bought <= 1:
             raise ValueError("position quantity must be positive and cost cannot be negative")
         return Position(
             market_id=market_id, exchange="POLYMARKET_US", outcome=outcome,
@@ -773,12 +766,10 @@ class PolyUsWebsocketClient(WebsocketClient):
             try:
                 if not isinstance(item, dict) or not isinstance(item.get("currency"), str) or not item["currency"]:
                     raise ValueError("balance requires currency")
-                amount = item.get("buyingPower", item.get("currentBalance"))
-                if amount is None:
-                    raise ValueError("balance requires buyingPower/currentBalance")
-                balances[item["currency"]] = _numeric_amount(amount)
+                balances[item["currency"]] = _account_balance(item, self.cash_resolver)
             except (AttributeError, TypeError, ValueError) as exc:
-                logger.warning("Skipping malformed Polymarket US balance snapshot item: %s", exc)
+                logger.warning("Dropping incomplete Polymarket US balance snapshot: %s", exc)
+                return
         self.queue.put_nowait(BalanceSnapshotEvent(
             exchange="POLYMARKET_US", timestamp=time.time(), balances=balances
         ))
@@ -791,12 +782,10 @@ class PolyUsWebsocketClient(WebsocketClient):
             logger.warning("Dropping malformed Polymarket US balance update")
             return
         try:
-            amount = after.get("buyingPower", after.get("currentBalance", after.get("balance")))
-            if amount is None:
-                raise ValueError("balance has no amount")
+            balance = _account_balance(after, self.cash_resolver)
             self.queue.put_nowait(BalanceUpdateEvent(
-                exchange="POLYMARKET_US", timestamp=self._timestamp(change.get("updateTime")),
-                currency=after["currency"], balance=_numeric_amount(amount),
+                exchange="POLYMARKET_US", timestamp=balance.timestamp,
+                currency=after["currency"], balance=balance,
             ))
         except (AttributeError, TypeError, ValueError) as exc:
             logger.warning("Dropping malformed Polymarket US balance update: %s", exc)
@@ -852,6 +841,15 @@ class PolyUsWebsocketClient(WebsocketClient):
             market_id=market_id, trade=trade,
         ))
 
+    async def _handle_connection_state(self, ws_type, connected):
+        if ws_type == "private":
+            if not connected:
+                self._order_snapshot_orders.clear()
+                self._order_snapshot_skipped = False
+            self.queue.put_nowait(AccountConnectionEvent(
+                exchange="POLYMARKET_US", timestamp=time.time(), connected=connected,
+            ))
+
     async def start(self) -> None:
         await self.websocket.start()
 
@@ -863,8 +861,8 @@ class PolyUsWebsocketClient(WebsocketClient):
             )
             if cached_slug is None:
                 market = await self.polymarket_api.get_market(market_id)
-                slug = market.slug
-                market_id = market.id
+                slug = _order_field(market, "slug")
+                market_id = str(_order_field(market, "id"))
             else:
                 slug = cached_slug
             self._market_id_by_slug[slug] = market_id
@@ -887,10 +885,11 @@ class PolyUsWebsocketClient(WebsocketClient):
 def create_poly_us_clients(
     key_id: str,
     secret_key: str,
+    cash_resolver=None,
 ) -> Tuple[PolyUsClient, PolyUsWebsocketClient]:
     """Build REST and websocket clients with one shared slug-to-market-ID map."""
     market_id_by_slug: Dict[str, str] = {}
     return (
-        PolyUsClient(key_id, secret_key, market_id_by_slug),
-        PolyUsWebsocketClient(key_id, secret_key, market_id_by_slug),
+        PolyUsClient(key_id, secret_key, market_id_by_slug, cash_resolver),
+        PolyUsWebsocketClient(key_id, secret_key, market_id_by_slug, cash_resolver),
     )

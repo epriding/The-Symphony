@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import List, Any, Dict
 import asyncio
-from ...utilities.classes import OrderIntent, OrderRecord, Position, MarketInfo, OrderBook
+from ...utilities.classes import ApprovedOrder, AccountBalance, OrderRecord, Position, MarketInfo, OrderBook
 
 class RestClient(ABC):
-    """Contract that OrderCoordinator depends on. Real client and
-    PaperTradingEngine both implement this so the backend is swappable."""
+    """Live exchange contract; the coordinator routes paper execution separately."""
 
     @abstractmethod
     async def get_markets(self, active: bool = True, limit: int = 200, offset: Any = None) -> List[MarketInfo]:
@@ -29,7 +28,7 @@ class RestClient(ABC):
         pass
 
     @abstractmethod
-    async def place_order(self, order: OrderIntent) -> OrderRecord:
+    async def place_order(self, order: ApprovedOrder) -> OrderRecord:
         pass
 
     @abstractmethod
@@ -37,7 +36,7 @@ class RestClient(ABC):
         pass
 
     @abstractmethod
-    async def get_balance(self) -> Dict[str, float]:
+    async def get_balance(self) -> Dict[str, AccountBalance]:
         pass
 
 

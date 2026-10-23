@@ -65,6 +65,9 @@ class PolyUSWebsocket():
         self._connected[ws_type] = False
         self._ws[ws_type] = None
 
+        handler = self.handlers.get("connection_state")
+        if handler:
+            self._async_handler_callback(ws_type, "connection_state", handler)(ws_type, False)
         close_data = close_data or {}
         code = close_data.get('close', close_data.get('code', 1006))
         reason = close_data.get('reason', 'Unknown Drop')
@@ -200,6 +203,11 @@ class PolyUSWebsocket():
         self._connected[ws_type] = True
         self._attempts[ws_type] = 0
         self._disconnected[ws_type].clear()
+        handler = self.handlers.get("connection_state")
+        if handler:
+            result = handler(ws_type, True)
+            if inspect.isawaitable(result):
+                await result
 
     async def _start_stream(self, ws_type: str) -> None:
         """Streams market or private data depending on websocket type: ws_type"""

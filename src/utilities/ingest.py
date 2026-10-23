@@ -4,23 +4,22 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections import OrderedDict, deque
-from dataclasses import replace
-from typing import Awaitable, Callable, Deque, Optional, Set, Tuple
+from typing import Awaitable, Callable, Optional
 
 from ..api.interfaces.base_interfaces import RestClient, WebsocketClient
 from ..market_decisions.order_coordinator import OrderCoordinator
 from .classes import (
+    AccountConnectionEvent,
     BalanceSnapshotEvent,
     BalanceUpdateEvent,
     LiteOrderBookSnapshotEvent,
     OrderBook,
     OrderBookSnapshotEvent,
     OrderSnapshotEvent,
-    OrderStatus,
     OrderUpdateEvent,
     PositionSnapshotEvent,
     PositionUpdateEvent,
+    PrivateEvent,
     RfqEvent,
     TradeEvent,
 )
@@ -35,15 +34,6 @@ EventHandler = Callable[[object], Optional[Awaitable[None]]]
 class WebsocketEventIngestor:
     """Consume a websocket client's typed queue and apply events to TradingState."""
 
-    _TERMINAL_ORDER_STATUSES = {
-        OrderStatus.FILLED,
-        OrderStatus.CANCELED,
-        OrderStatus.REJECTED,
-        OrderStatus.EXPIRED,
-    }
-    _MAX_REMEMBERED_EXECUTIONS = 10_000
-    _MAX_REMEMBERED_ORDERS = 10_000
-
     def __init__(
         self,
         websocket_client: WebsocketClient,
@@ -55,11 +45,6 @@ class WebsocketEventIngestor:
         self.state = state
         self.coordinator = coordinator
         self.event_handler = event_handler
-        self._filled_by_order: OrderedDict[str, float] = OrderedDict()
-        self._seen_execution_ids: Set[Tuple[str, str]] = set()
-        self._execution_id_order: Deque[Tuple[str, str]] = deque()
-        self._order_snapshot_ready = False
-        self._pending_order_updates = []
 
     async def run(self) -> None:
         """Process events until cancelled; a bad event does not stop the queue."""
@@ -70,12 +55,27 @@ class WebsocketEventIngestor:
             except asyncio.CancelledError:
                 raise
             except Exception:
+                if isinstance(event, PrivateEvent):
+                    async with self.state.lock:
+                        self.state.portfolios["LIVE"].dirty_exchanges.add(event.exchange)
                 logger.exception("Failed to ingest websocket event %r", event)
             finally:
                 self.websocket_client.queue.task_done()
 
     async def handle_event(self, event: object) -> None:
-        if isinstance(event, OrderBookSnapshotEvent):
+        if isinstance(event, AccountConnectionEvent):
+            async with self.state.lock:
+                portfolio = self.state.portfolios["LIVE"]
+                self.state._invalidate_exchange(event.exchange)
+                if event.connected:
+                    portfolio.disconnected_exchanges.discard(event.exchange)
+                else:
+                    portfolio.disconnected_exchanges.add(event.exchange)
+            if event.connected:
+                # Connectivity is restored even if this refresh fails. The dirty
+                # flag keeps trading blocked until a later reconciliation succeeds.
+                await self.coordinator.reconcile(event.exchange)
+        elif isinstance(event, OrderBookSnapshotEvent):
             await self._apply_orderbook_snapshot(event)
         elif isinstance(event, LiteOrderBookSnapshotEvent):
             await self.state.update_market_quote(event)
@@ -98,9 +98,9 @@ class WebsocketEventIngestor:
             else:
                 await self.state.update_live_position(event.position)
         elif isinstance(event, BalanceSnapshotEvent):
-            await self.state.replace_balances(event.balances)
+            await self.state.replace_balances(event.balances, event.exchange, event.timestamp)
         elif isinstance(event, BalanceUpdateEvent):
-            await self.state.update_balance(event.currency, event.balance)
+            await self.state.update_balance(event.currency, event.balance, event.exchange)
         elif isinstance(event, RfqEvent):
             await self._forward(event)
         else:
@@ -122,76 +122,13 @@ class WebsocketEventIngestor:
         await self.state.update_orderbook(orderbook)
 
     async def _apply_order_snapshot(self, event: OrderSnapshotEvent) -> None:
-        if not event.complete:
-            logger.warning("Ignoring incomplete %s order snapshot", event.exchange)
-            return
-        for order in event.orders:
-            key = f"{order.exchange}:{order.order_id}"
-            if order.filled_quantity is not None:
-                self._remember_cumulative(
-                    key, max(self._filled_by_order.get(key, 0.0), order.filled_quantity)
-                )
-        await self.state.apply_order_snapshot(event.exchange, event.orders, event.complete)
-        self._order_snapshot_ready = True
-        pending, self._pending_order_updates = self._pending_order_updates, []
-        for pending_update in pending:
-            await self._apply_order_update(pending_update)
+        await self.coordinator.apply_order_snapshot(event.orders, event.exchange, event.complete)
 
     async def _apply_order_update(self, event: OrderUpdateEvent) -> None:
-        if not self._order_snapshot_ready:
-            self._pending_order_updates.append(event)
-            return
-        order = event.order
-        key = f"{order.exchange}:{order.order_id}"
-        existing = self.state.open_orders.get(key)
-        if existing is not None:
-            order.strategy = existing.strategy
-
-        cumulative = order.filled_quantity
-        known_cumulative = max(
-            self._filled_by_order.get(key, 0.0),
-            existing.filled_quantity if existing and existing.filled_quantity is not None else 0.0,
+        await self.coordinator.apply_order_update(
+            event.order, fill_quantity=event.fill_quantity,
+            fill_price=event.fill_price, execution_id=event.execution_id,
         )
-
-        fill_change = 0.0
-        if cumulative is not None:
-            fill_change = max(0.0, cumulative - known_cumulative)
-            self._remember_cumulative(key, max(known_cumulative, cumulative))
-        elif event.fill_quantity is not None:
-            execution_key = (key, event.execution_id) if event.execution_id else None
-            if execution_key is None or execution_key not in self._seen_execution_ids:
-                fill_change = event.fill_quantity
-                if execution_key is not None:
-                    self._remember_execution(execution_key)
-            self._remember_cumulative(key, known_cumulative + fill_change)
-            order.filled_quantity = self._filled_by_order[key]
-
-        if fill_change > 0:
-            fill = replace(
-                order,
-                size=fill_change,
-                price=event.fill_price if event.fill_price is not None else order.price,
-                status=OrderStatus.FILLED,
-            )
-            await self.coordinator.apply_fill(fill)
-
-        if order.status in self._TERMINAL_ORDER_STATUSES:
-            await self.state.remove_open_order(order.order_id, order.exchange)
-        else:
-            await self.state.update_open_order(order)
-
-    def _remember_execution(self, execution_key: Tuple[str, str]) -> None:
-        self._seen_execution_ids.add(execution_key)
-        self._execution_id_order.append(execution_key)
-        while len(self._execution_id_order) > self._MAX_REMEMBERED_EXECUTIONS:
-            expired = self._execution_id_order.popleft()
-            self._seen_execution_ids.discard(expired)
-
-    def _remember_cumulative(self, order_key: str, quantity: float) -> None:
-        self._filled_by_order[order_key] = quantity
-        self._filled_by_order.move_to_end(order_key)
-        while len(self._filled_by_order) > self._MAX_REMEMBERED_ORDERS:
-            self._filled_by_order.popitem(last=False)
 
     async def _forward(self, event: object) -> None:
         if self.event_handler is None:
@@ -210,17 +147,8 @@ async def run_websocket_ingestion(
     event_handler: Optional[EventHandler] = None,
 ) -> None:
     """Bootstrap live account state, then run websocket ingestion and streaming."""
-    try:
-        positions = await rest_client.get_positions()
-        await state.apply_live_position_snapshot(positions, exchange)
-    except Exception:
-        logger.exception("Could not load initial positions before websocket startup")
-
-    try:
-        balances = await rest_client.get_balance()
-        await state.replace_balances(balances)
-    except Exception:
-        logger.exception("Could not load initial balances before websocket startup")
+    # A failed bootstrap propagates: do not start trading from partial state.
+    await coordinator.reconcile(exchange)
 
     ingestor = WebsocketEventIngestor(
         websocket_client=websocket_client,
