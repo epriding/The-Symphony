@@ -3,7 +3,7 @@ from copy import deepcopy
 from dataclasses import replace
 import pytest
 
-from conftest import FakeClient
+from conftest import FakeClient, ImmediateFillPaperEngine
 from src.market_decisions.order_coordinator import OrderCoordinator
 from src.utilities.classes import (
     AccountBalance, BalanceSnapshotEvent, BalanceUpdateEvent, AccountConnectionEvent,
@@ -14,7 +14,7 @@ from src.utilities.ingest import WebsocketEventIngestor
 
 @pytest.mark.asyncio
 async def test_paper_buy_duplicate_target_and_full_exit(state, intent):
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     result = await coordinator.submit(intent)
     assert result.status == "submitted"
     portfolio = state.portfolios["PAPER"]
@@ -38,7 +38,7 @@ async def test_paper_buy_duplicate_target_and_full_exit(state, intent):
 @pytest.mark.asyncio
 async def test_fee_reserves_and_realized_pnl(state, intent):
     state.markets["A:m"].fee_per_contract = .01
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     result = await coordinator.submit(intent)
     order = result.records[0]
     portfolio = state.portfolios["PAPER"]
@@ -50,7 +50,7 @@ async def test_fee_reserves_and_realized_pnl(state, intent):
 @pytest.mark.asyncio
 async def test_concurrent_strategies_cannot_overspend(state, intent):
     state.risk_managers["PAPER"].config.max_total_exposure = 100
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     results = await asyncio.gather(coordinator.submit(intent), coordinator.submit(replace(intent, strategy="second", intent_id="second")))
     assert sum(r.status == "submitted" for r in results) == 1
     portfolio = state.portfolios["PAPER"]
@@ -60,7 +60,7 @@ async def test_concurrent_strategies_cannot_overspend(state, intent):
 
 @pytest.mark.asyncio
 async def test_unknown_strategy_never_defaults_to_live(state, intent):
-    result = await OrderCoordinator(state).submit(replace(intent, strategy="typo"))
+    result = await OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine()).submit(replace(intent, strategy="typo"))
     assert result.decision.reason == "unknown_strategy_route"
 
 
@@ -75,7 +75,7 @@ async def test_snapshot_is_an_isolated_copy(state):
 
 @pytest.mark.asyncio
 async def test_balance_events_isolate_portfolios_exchanges_and_age(state, clock):
-    ingestor = WebsocketEventIngestor(object(), state, OrderCoordinator(state))
+    ingestor = WebsocketEventIngestor(object(), state, OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine()))
     for exchange, value in [("A", 500), ("B", 800)]:
         await ingestor.handle_event(BalanceSnapshotEvent(exchange=exchange, timestamp=clock(), balances={"USD": AccountBalance(value, value, clock())}))
     assert state.portfolios["PAPER"].balances["A"]["USD"].cash == 1000
@@ -88,7 +88,7 @@ async def test_balance_events_isolate_portfolios_exchanges_and_age(state, clock)
 @pytest.mark.asyncio
 async def test_partial_fill_response_and_stream_are_applied_once(state, intent, clock):
     client = FakeClient(clock, status=OrderStatus.PARTIALLY_FILLED, filled=40)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     result = await coordinator.submit(replace(intent, strategy="live"))
     record = result.records[0]
@@ -111,7 +111,7 @@ async def test_partial_fill_response_and_stream_are_applied_once(state, intent, 
 
 @pytest.mark.asyncio
 async def test_terminal_fill_cannot_be_resurrected_by_stale_ack(state, intent):
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     result = await coordinator.submit(intent)
     record = result.records[0]
     await coordinator.apply_order_update(replace(record, status=OrderStatus.NEW, filled_quantity=0))
@@ -124,7 +124,7 @@ async def test_terminal_fill_cannot_be_resurrected_by_stale_ack(state, intent):
 @pytest.mark.asyncio
 async def test_timeout_retains_reservation_and_blocks_retry(state, intent, clock):
     client = FakeClient(clock)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     client.error = TimeoutError("ambiguous")
     live = replace(intent, strategy="live")
@@ -144,7 +144,7 @@ async def test_timeout_retains_reservation_and_blocks_retry(state, intent, clock
 @pytest.mark.asyncio
 async def test_unknown_recovery_after_unattributed_stream_fill(state, intent, clock):
     client = FakeClient(clock)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     client.error = TimeoutError()
     live = replace(intent, strategy="live")
@@ -161,7 +161,7 @@ async def test_unknown_recovery_after_unattributed_stream_fill(state, intent, cl
 @pytest.mark.asyncio
 async def test_cancel_releases_only_after_terminal_confirmation(state, intent, clock):
     client = FakeClient(clock)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     await coordinator.submit(replace(intent, strategy="live"))
     client.cancel_status = OrderStatus.NEW
@@ -175,7 +175,7 @@ async def test_cancel_releases_only_after_terminal_confirmation(state, intent, c
 @pytest.mark.asyncio
 async def test_missing_order_during_reconcile_keeps_commitment(state, intent, clock):
     client = FakeClient(clock)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     await coordinator.submit(replace(intent, strategy="live"))
     client.orders.clear()
@@ -186,7 +186,7 @@ async def test_missing_order_during_reconcile_keeps_commitment(state, intent, cl
 
 @pytest.mark.asyncio
 async def test_paper_batch_and_unsupported_live_group(state, intent, clock):
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     batch = OrderIntentBatch(legs=[intent, replace(intent, intent_id="no", outcome="NO")], quantity_ratios=[1, 2], capital_ceiling=99, execution_policy="paper_all_or_none")
     result = await coordinator.submit_batch(batch)
     assert result.status == "submitted"
@@ -205,7 +205,7 @@ async def test_cross_exchange_group_cannot_transfer_cash(state, intent, clock):
     state.markets["B:m"] = replace(state.markets["A:m"], exchange="B")
     state.orderbooks["B:m:YES"] = replace(state.orderbooks["A:m:YES"], exchange="B")
     batch = OrderIntentBatch(legs=[intent, replace(intent, exchange="B", intent_id="b")], quantity_ratios=[1, 1], capital_ceiling=100, execution_policy="paper_all_or_none")
-    result = await OrderCoordinator(state).submit_batch(batch)
+    result = await OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine()).submit_batch(batch)
     assert result.status == "submitted"
     assert [r.size for r in result.records] == [40, 40]
     assert portfolio.balances["A"]["USD"].cash == 980
@@ -227,7 +227,7 @@ async def test_withdrawal_adjusts_baseline_and_cannot_spend_reservations(state, 
 async def test_stream_without_cumulative_requires_execution_id(state):
     record = OrderRecord("x", "m", "A", "YES", Side.BUY, 10, .5,
                          OrderStatus.PARTIALLY_FILLED)
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     with pytest.raises(ValueError, match="execution ID"):
         await coordinator.apply_order_update(record, fill_quantity=2)
     await coordinator.apply_order_update(record, fill_quantity=2, execution_id="first")
@@ -238,7 +238,7 @@ async def test_stream_without_cumulative_requires_execution_id(state):
 @pytest.mark.asyncio
 async def test_reconnect_reconciles_and_clears_disconnected_state(state, intent, clock):
     client = FakeClient(clock)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     ingestor = WebsocketEventIngestor(object(), state, coordinator)
     await coordinator.reconcile()
     await ingestor.handle_event(AccountConnectionEvent(exchange="A", timestamp=clock(), connected=False))
@@ -253,7 +253,7 @@ async def test_live_venues_route_to_separate_clients(state, intent, clock):
     a, b = FakeClient(clock), FakeClient(clock, "B")
     state.markets["B:m"] = replace(state.markets["A:m"], exchange="B")
     state.orderbooks["B:m:YES"] = replace(state.orderbooks["A:m:YES"], exchange="B")
-    coordinator = OrderCoordinator(state, {"A": a, "B": b})
+    coordinator = OrderCoordinator(state, {"A": a, "B": b}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     assert (await coordinator.submit(replace(intent, strategy="live"))).status == "submitted"
     await coordinator.reconcile("A")
@@ -266,7 +266,7 @@ async def test_live_venues_route_to_separate_clients(state, intent, clock):
 @pytest.mark.asyncio
 async def test_canceled_order_without_fill_counter_keeps_commitment(state, intent, clock):
     client = FakeClient(clock)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     await coordinator.submit(replace(intent, strategy="live"))
     unknown = replace(client.orders["1"], status=OrderStatus.CANCELED, filled_quantity=None)
@@ -286,7 +286,7 @@ async def test_canceled_order_without_fill_counter_keeps_commitment(state, inten
 
 @pytest.mark.asyncio
 async def test_batch_id_is_idempotent_even_with_new_leg_ids(state, intent):
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     batch = OrderIntentBatch(legs=[intent], quantity_ratios=[1], capital_ceiling=10,
                             execution_policy="paper_all_or_none")
     assert (await coordinator.submit_batch(batch)).status == "submitted"
@@ -296,8 +296,7 @@ async def test_batch_id_is_idempotent_even_with_new_leg_ids(state, intent):
 
 @pytest.mark.asyncio
 async def test_broken_paper_group_rolls_back_all_legs(state, intent):
-    from src.paper_trading.paper_trading_engine import PaperTradingEngine
-    class BrokenEngine(PaperTradingEngine):
+    class BrokenEngine(ImmediateFillPaperEngine):
         async def simulate_fill(self, order, market, quote):
             record = await super().simulate_fill(order, market, quote)
             return replace(record, average_fill_price=2) if order.outcome == "NO" else record
@@ -313,7 +312,7 @@ async def test_broken_paper_group_rolls_back_all_legs(state, intent):
 @pytest.mark.asyncio
 async def test_paper_and_live_use_independent_risk_settings(state, intent, clock):
     client = FakeClient(clock)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     state.risk_managers["PAPER"].config.max_position_exposure = 20
     state.risk_managers["LIVE"].config.max_position_exposure = 80
@@ -325,7 +324,7 @@ async def test_paper_and_live_use_independent_risk_settings(state, intent, clock
 
 @pytest.mark.asyncio
 async def test_approval_delay_never_submits_stale_signal(state, intent, clock):
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     clock.now += 31
     result = await coordinator.submit(intent)
     assert result.decision.reason == "stale_signal"
@@ -336,7 +335,7 @@ async def test_approval_delay_never_submits_stale_signal(state, intent, clock):
 async def test_submission_market_bound_remains_in_open_commitment(state, intent, clock):
     from src.utilities.classes import OrderType
     client = FakeClient(clock)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     result = await coordinator.submit(replace(intent, strategy="live", order_type=OrderType.MARKET, slippage=2))
     order = result.decision.orders[0]
@@ -350,7 +349,7 @@ async def test_submission_market_bound_remains_in_open_commitment(state, intent,
 @pytest.mark.asyncio
 async def test_partial_private_account_updates_cannot_inflate_high_water(state, clock):
     client = FakeClient(clock)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     portfolio = state.portfolios["LIVE"]
     assert portfolio.equity_high_water == 1000
@@ -368,7 +367,7 @@ async def test_partial_private_account_updates_cannot_inflate_high_water(state, 
 @pytest.mark.asyncio
 async def test_reconciliation_rejects_concurrent_private_account_change(state, clock):
     client = FakeClient(clock)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     original = client.get_positions
     async def racing_positions():
@@ -385,7 +384,7 @@ async def test_reconciliation_rejects_concurrent_private_account_change(state, c
 async def test_old_balance_revision_cannot_complete_reconciliation(state, clock):
     client = FakeClient(clock)
     client.balances["USD"].source_timestamp = 10
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     client.balances["USD"].source_timestamp = 9
     with pytest.raises(RuntimeError, match="older balances"):
@@ -397,7 +396,7 @@ async def test_old_balance_revision_cannot_complete_reconciliation(state, clock)
 @pytest.mark.asyncio
 async def test_failed_reconnect_refresh_can_be_retried(state, intent, clock, monkeypatch):
     client = FakeClient(clock)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     ingestor = WebsocketEventIngestor(object(), state, coordinator)
     await coordinator.reconcile()
     await ingestor.handle_event(AccountConnectionEvent(exchange="A", timestamp=clock(), connected=False))
@@ -423,7 +422,7 @@ async def test_failed_reconnect_refresh_can_be_retried(state, intent, clock, mon
 
 @pytest.mark.asyncio
 async def test_reconciliation_does_not_clear_transport_disconnect(state, intent, clock):
-    coordinator = OrderCoordinator(state, {"A": FakeClient(clock)})
+    coordinator = OrderCoordinator(state, {"A": FakeClient(clock)}, paper_engine=ImmediateFillPaperEngine())
     ingestor = WebsocketEventIngestor(object(), state, coordinator)
     await ingestor.handle_event(AccountConnectionEvent(exchange="A", timestamp=clock(), connected=False))
     await coordinator.reconcile("A")
@@ -437,7 +436,7 @@ async def test_external_unfilled_order_requires_balance_refresh(state, intent, c
     a, b = FakeClient(clock), FakeClient(clock, "B")
     for client in (a, b):
         client.balances = {"USD": AccountBalance(100, 100, clock())}
-    coordinator = OrderCoordinator(state, {"A": a, "B": b})
+    coordinator = OrderCoordinator(state, {"A": a, "B": b}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     external = OrderRecord("manual", "m", "A", "YES", Side.BUY, 180, .5,
                            OrderStatus.NEW, filled_quantity=0)
@@ -467,7 +466,7 @@ async def test_late_live_average_corrects_basis_without_adding_shares(state, int
         return replace(await original(order), average_fill_price=None)
 
     monkeypatch.setattr(client, "place_order", response_without_average)
-    coordinator = OrderCoordinator(state, {"A": client})
+    coordinator = OrderCoordinator(state, {"A": client}, paper_engine=ImmediateFillPaperEngine())
     await coordinator.reconcile()
     result = await coordinator.submit(replace(intent, strategy="live"))
     portfolio = state.portfolios["LIVE"]
@@ -493,7 +492,7 @@ async def test_late_live_average_corrects_basis_without_adding_shares(state, int
 @pytest.mark.asyncio
 @pytest.mark.parametrize("close_fraction", [.5, 1])
 async def test_late_buy_average_corrects_costs_after_exits(state, intent, close_fraction):
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     buy = (await coordinator.submit(intent)).records[0]
     state.orderbooks["A:m:YES"].bids = {.6: 1000}
     sell = replace(intent, intent_id="exit", side=Side.SELL, reduce_only=True,
@@ -518,7 +517,7 @@ async def test_late_buy_average_corrects_costs_after_exits(state, intent, close_
 
 @pytest.mark.asyncio
 async def test_late_sell_average_corrects_cash_and_realized_profit(state, intent):
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     await coordinator.submit(intent)
     state.orderbooks["A:m:YES"].bids = {.6: 1000}
     sell = replace(intent, intent_id="exit", side=Side.SELL, reduce_only=True)
@@ -534,7 +533,7 @@ async def test_late_sell_average_corrects_cash_and_realized_profit(state, intent
 
 @pytest.mark.asyncio
 async def test_cost_correction_preserves_other_strategy_inventory(state, intent):
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     first = (await coordinator.submit(intent)).records[0]
     second = (await coordinator.submit(replace(intent, strategy="second", intent_id="second"))).records[0]
     state.orderbooks["A:m:YES"].bids = {.6: 2000}
@@ -557,7 +556,7 @@ async def test_cost_correction_preserves_other_strategy_inventory(state, intent)
 @pytest.mark.asyncio
 @pytest.mark.parametrize("average", [float("nan"), float("inf"), -.1, 1.1])
 async def test_invalid_late_average_does_not_change_accounting(state, intent, average):
-    coordinator = OrderCoordinator(state)
+    coordinator = OrderCoordinator(state, paper_engine=ImmediateFillPaperEngine())
     record = (await coordinator.submit(intent)).records[0]
     before = deepcopy(state.portfolios["PAPER"])
     with pytest.raises(ValueError, match="average fill price"):

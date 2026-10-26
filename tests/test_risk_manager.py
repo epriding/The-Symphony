@@ -228,3 +228,17 @@ def test_fractional_group_scale_is_exact(state, intent):
     assert a.size == .7
     assert b.size == 2 * a.size
     assert sum(o.commitment for o in decision.orders) <= 1.1
+
+
+def test_group_quantity_uses_fee_provider_instead_of_flat_fee_bound(state, intent):
+    risk = state.risk_managers["PAPER"]
+    state.markets["A:m"].fee_per_contract = .1
+
+    without_provider = risk.evaluate(intent, snapshot(state), group_budget=1.5, group_quantity=3)
+    assert not without_provider.approved
+    assert without_provider.reason == "batch_group_ceiling"
+
+    risk.fee_reserve_provider = lambda intent, market, quantity, price: 0
+    with_provider = risk.evaluate(intent, snapshot(state), group_budget=1.5, group_quantity=3)
+    assert with_provider.approved
+    assert with_provider.orders[0].size == 3

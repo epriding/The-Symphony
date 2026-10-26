@@ -1,0 +1,8 @@
+{
+  "provenance": "Synthetic values using the official US and Kalshi public websocket schemas; no live capture or credentials.",
+  "us_book": {"marketData": {"marketSlug": "demo-us", "bids": [{"px": {"value": "0.49", "currency": "USD"}, "qty": "100"}], "offers": [{"px": {"value": "0.50", "currency": "USD"}, "qty": "40"}], "state": "MARKET_STATE_OPEN", "transactTime": "2027-01-15T08:00:00Z"}},
+  "us_trade": {"trade": {"marketSlug": "demo-us", "tradeId": "synthetic-us-trade", "price": {"value": "0.49", "currency": "USD"}, "quantity": {"value": "105", "currency": "USD"}, "maker": {"side": "ORDER_SIDE_BUY", "intent": "ORDER_INTENT_BUY_SHORT"}, "taker": {"side": "ORDER_SIDE_SELL", "intent": "ORDER_INTENT_SELL_LONG"}, "tradeTime": "2027-01-15T08:00:00Z"}},
+  "kalshi_book": {"type": "orderbook_snapshot", "sid": 10, "seq": 1, "sending_ts_ms": 1800000000000, "msg": {"market_ticker": "DEMO-K", "yes_dollars_fp": [["0.49", "100.00"]], "no_dollars_fp": [["0.50", "40.00"]]}},
+  "kalshi_delta": {"type": "orderbook_delta", "sid": 10, "seq": 2, "sending_ts_ms": 1800000000001, "msg": {"market_ticker": "DEMO-K", "side": "no", "price_dollars": "0.49", "delta_fp": "20.00"}},
+  "kalshi_trade": {"type": "trade", "sid": 20, "seq": 1, "sending_ts_ms": 1800000000002, "msg": {"market_ticker": "DEMO-K", "trade_id": "synthetic-kalshi-trade", "yes_price_dollars": "0.49", "no_price_dollars": "0.51", "count_fp": "105.00", "taker_book_side": "ask", "taker_side": "no", "is_block_trade": false}}
+}

@@ -144,6 +144,7 @@ class MarketInfo:
     min_notional: float = 0.0
     # Conservative maximum fee per contract, in dollars. None means unknown.
     fee_per_contract: Optional[float] = None
+    price_ranges: List[Dict[str, str]] = field(default_factory=list)
 
 class OrderType(str, Enum):
     LIMIT = "ORDER_TYPE_LIMIT"
@@ -186,6 +187,7 @@ class OrderIntent:
     order_type: OrderType = OrderType.LIMIT
     slippage: Optional[int] = None  # maximum ticks from price for market orders
     good_till_date: Optional[float] = None
+    post_only: bool = False
 
 
 class OrderNotSubmittedError(Exception):
@@ -201,12 +203,14 @@ class ApprovedOrder:
     fee_per_contract: float
     approved_until: float
     batch_id: str = ""
+    fee_reserve: Optional[float] = None
 
     @property
     def commitment(self) -> float:
+        fee = self.fee_reserve if self.fee_reserve is not None else self.size * self.fee_per_contract
         if self.side != Side.BUY:
-            return 0.0
-        return self.size * (self.price + self.fee_per_contract)
+            return max(0.0, fee - self.size * self.price)
+        return self.size * self.price + fee
 
     @property
     def remaining_quantity(self) -> float:
@@ -261,7 +265,10 @@ class OrderIntentBatch:
     capital_ceiling: float
     batch_id: str = field(default_factory=lambda: str(uuid4()))
     expires_at: Optional[float] = None
-    execution_policy: str = "assess_only"  # paper_all_or_none is also supported
+    execution_policy: str = "assess_only"  # realistic paper execution: paper_independent_legs
+    execution_deadline: Optional[float] = None
+    dispatch_policy: str = "concurrent"
+    market_equivalence: str = ""
 
 
 TERMINAL_ORDER_STATUSES = frozenset({
@@ -290,13 +297,20 @@ class OrderRecord:
     average_fill_price: Optional[float] = None
     # Total fees reported by the venue; used for P&L when available.
     fees_paid: Optional[float] = None
+    cumulative_notional: Optional[str] = None  # exact decimal USD from simulator
+    remaining_fee_reserve: Optional[float] = None
+    revision: int = 0
+    reason: str = ""
 
     @property
     def commitment(self) -> float:
         """USD still reserved by the unfilled part of an entry order."""
+        fee = self.remaining_fee_reserve
+        if fee is None:
+            fee = self.remaining_quantity * self.fee_per_contract
         if self.side != Side.BUY:
-            return 0.0
-        return self.remaining_quantity * (self.commitment_price + self.fee_per_contract)
+            return max(0.0, fee - self.remaining_quantity * self.commitment_price)
+        return self.remaining_quantity * self.commitment_price + fee
 
     @property
     def commitment_price(self) -> float:
@@ -420,6 +434,7 @@ class TradingConfig:
         self.max_markets_per_subscription = 200
         self.api_key: Optional[str] = None
         self.private_key: Optional[str] = None
+        self.paper_execution = None  # explicit PaperExecutionConfig for realistic sessions
 
 @dataclass
 class PortfolioState:
@@ -460,6 +475,8 @@ class PortfolioState:
     realized_pnl: float = 0.0
     net_cash_flows: float = 0.0
     entries_halted: bool = False
+    cash_credits: Dict[str, float] = field(default_factory=dict)
+    settlements: set = field(default_factory=set)
 
     @property
     def requires_reconciliation(self) -> bool:
@@ -492,6 +509,7 @@ class SubmissionResult:
     decision: RiskDecision
     records: List[OrderRecord] = field(default_factory=list)
     status: str = "rejected"
+    submission_ids: List[str] = field(default_factory=list)
 
 @dataclass(frozen=True)
 class Snapshot:

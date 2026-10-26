@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 from polymarket_us.errors import APIStatusError
 
 from .base_interfaces import WebsocketClient, RestClient
-from ..polymarket.polyUS_api import PolymarketAPI
+from ..polymarket.polyus_rest_api import PolymarketAPI
 from ..polymarket.polyus_websocket import PolyUSWebsocket
 from ...utilities.classes import (
     ApprovedOrder, OrderNotSubmittedError, AccountBalance, AccountConnectionEvent,
@@ -20,6 +20,31 @@ from ...utilities.logger import setup_logger
 
 
 logger = setup_logger(__name__)
+
+ORDER_INTENTS = {
+    "ORDER_INTENT_BUY_LONG": ("YES", Side.BUY),
+    "ORDER_INTENT_SELL_LONG": ("YES", Side.SELL),
+    "ORDER_INTENT_BUY_SHORT": ("NO", Side.BUY),
+    "ORDER_INTENT_SELL_SHORT": ("NO", Side.SELL),
+}
+ORDER_STATUSES = {
+    "ORDER_STATE_PENDING_NEW": OrderStatus.NEW,
+    "ORDER_STATE_PENDING_REPLACE": OrderStatus.NEW,
+    "ORDER_STATE_PENDING_CANCEL": OrderStatus.NEW,
+    "ORDER_STATE_PENDING_RISK": OrderStatus.NEW,
+    "ORDER_STATE_NEW": OrderStatus.NEW,
+    "ORDER_STATE_PARTIALLY_FILLED": OrderStatus.PARTIALLY_FILLED,
+    "ORDER_STATE_FILLED": OrderStatus.FILLED,
+    "ORDER_STATE_CANCELED": OrderStatus.CANCELED,
+    "ORDER_STATE_REJECTED": OrderStatus.REJECTED,
+    "ORDER_STATE_EXPIRED": OrderStatus.EXPIRED,
+}
+TIME_IN_FORCE = {
+    "TIME_IN_FORCE_GOOD_TILL_CANCEL": TimeInForce.GTC,
+    "TIME_IN_FORCE_GOOD_TILL_DATE": TimeInForce.GTD,
+    "TIME_IN_FORCE_IMMEDIATE_OR_CANCEL": TimeInForce.IOC,
+    "TIME_IN_FORCE_FILL_OR_KILL": TimeInForce.FOK,
+}
 
 
 def _order_field(order, name, default=None):
@@ -115,36 +140,13 @@ class PolyUsClient(RestClient):
         self.polymarket_api: PolymarketAPI = PolymarketAPI(key_id=key_id, secret_key=secret_key)
         self._slug_cache: Dict[str, str] = {}
         self._market_id_by_slug = market_id_by_slug if market_id_by_slug is not None else {}
-        self._INTENT_MAP = {
-            "ORDER_INTENT_BUY_LONG":   ("YES", Side.BUY),
-            "ORDER_INTENT_SELL_LONG":  ("YES", Side.SELL),
-            "ORDER_INTENT_BUY_SHORT":  ("NO",  Side.BUY),
-            "ORDER_INTENT_SELL_SHORT": ("NO",  Side.SELL),
-        }
+        self._INTENT_MAP = ORDER_INTENTS.copy()
         self._REVERSE_INTENT_MAP = {
-            ("YES", Side.BUY):  "ORDER_INTENT_BUY_LONG",
-            ("YES", Side.SELL): "ORDER_INTENT_SELL_LONG",
-            ("NO",  Side.BUY):  "ORDER_INTENT_BUY_SHORT",
-            ("NO",  Side.SELL): "ORDER_INTENT_SELL_SHORT",
+            economic_intent: exchange_intent
+            for exchange_intent, economic_intent in ORDER_INTENTS.items()
         }
-        self._STATUS_MAP = {
-            "ORDER_STATE_PENDING_NEW": OrderStatus.NEW,
-            "ORDER_STATE_PENDING_REPLACE": OrderStatus.NEW,
-            "ORDER_STATE_PENDING_CANCEL": OrderStatus.NEW,
-            "ORDER_STATE_PENDING_RISK": OrderStatus.NEW,
-            "ORDER_STATE_NEW": OrderStatus.NEW,
-            "ORDER_STATE_PARTIALLY_FILLED": OrderStatus.PARTIALLY_FILLED,
-            "ORDER_STATE_FILLED": OrderStatus.FILLED,
-            "ORDER_STATE_CANCELED": OrderStatus.CANCELED,
-            "ORDER_STATE_REJECTED": OrderStatus.REJECTED,
-            "ORDER_STATE_EXPIRED": OrderStatus.EXPIRED,
-        }
-        self._TIF_MAP = {
-            "TIME_IN_FORCE_GOOD_TILL_CANCEL": TimeInForce.GTC,
-            "TIME_IN_FORCE_GOOD_TILL_DATE": TimeInForce.GTD,
-            "TIME_IN_FORCE_IMMEDIATE_OR_CANCEL": TimeInForce.IOC,
-            "TIME_IN_FORCE_FILL_OR_KILL": TimeInForce.FOK,
-        }
+        self._STATUS_MAP = ORDER_STATUSES.copy()
+        self._TIF_MAP = TIME_IN_FORCE.copy()
 
     async def get_markets(self, active: bool = True, limit: int = 100, offset: int = 0) -> List[MarketInfo]:
         response = await self.polymarket_api.get_markets(active=active, limit=limit, offset=offset)
@@ -374,12 +376,7 @@ class PolyUsWebsocketClient(WebsocketClient):
     ):
         self._market_id_by_slug = market_id_by_slug if market_id_by_slug is not None else {}
         self.cash_resolver = cash_resolver
-        self._INTENT_MAP = {
-            "ORDER_INTENT_BUY_LONG": ("YES", Side.BUY),
-            "ORDER_INTENT_SELL_LONG": ("YES", Side.SELL),
-            "ORDER_INTENT_BUY_SHORT": ("NO", Side.BUY),
-            "ORDER_INTENT_SELL_SHORT": ("NO", Side.SELL),
-        }
+        self._INTENT_MAP = ORDER_INTENTS.copy()
         self.polymarket_api = PolymarketAPI(key_id=key_id, secret_key=secret_key)
         self.websocket = PolyUSWebsocket(
             key_id=key_id,
@@ -541,12 +538,14 @@ class PolyUsWebsocketClient(WebsocketClient):
         if event_fields is None:
             return
         try:
+            last_price = payload.get("currentPx")
+            if last_price is None:
+                last_price = payload.get("lastTradePx")
             self.queue.put_nowait(LiteOrderBookSnapshotEvent(
                 **event_fields,
                 best_bid=_numeric_amount(payload["bestBid"]) if payload.get("bestBid") is not None else None,
                 best_ask=_numeric_amount(payload["bestAsk"]) if payload.get("bestAsk") is not None else None,
-                last_price=_numeric_amount(payload["currentPx"] if payload.get("currentPx") is not None else payload["lastTradePx"])
-                if payload.get("currentPx") is not None or payload.get("lastTradePx") is not None else None,
+                last_price=_numeric_amount(last_price) if last_price is not None else None,
             ))
         except (AttributeError, TypeError, ValueError) as exc:
             logger.warning("Dropping malformed Polymarket US lite market data message: %s", exc)
@@ -610,28 +609,13 @@ class PolyUsWebsocketClient(WebsocketClient):
 
     @staticmethod
     def _websocket_order_status(state: str) -> OrderStatus:
-        return {
-            "ORDER_STATE_PENDING_NEW": OrderStatus.NEW,
-            "ORDER_STATE_NEW": OrderStatus.NEW,
-            "ORDER_STATE_PENDING_REPLACE": OrderStatus.NEW,
-            "ORDER_STATE_PENDING_CANCEL": OrderStatus.NEW,
-            "ORDER_STATE_PENDING_RISK": OrderStatus.NEW,
-            "ORDER_STATE_PARTIALLY_FILLED": OrderStatus.PARTIALLY_FILLED,
-            "ORDER_STATE_FILLED": OrderStatus.FILLED,
-            "ORDER_STATE_CANCELED": OrderStatus.CANCELED,
-            "ORDER_STATE_REPLACED": OrderStatus.CANCELED,
-            "ORDER_STATE_REJECTED": OrderStatus.REJECTED,
-            "ORDER_STATE_EXPIRED": OrderStatus.EXPIRED,
-        }.get(state, OrderStatus.UNKNOWN)
+        if state == "ORDER_STATE_REPLACED":
+            return OrderStatus.CANCELED
+        return ORDER_STATUSES.get(state, OrderStatus.UNKNOWN)
 
     @staticmethod
     def _websocket_tif(tif: str) -> TimeInForce:
-        return {
-            "TIME_IN_FORCE_GOOD_TILL_CANCEL": TimeInForce.GTC,
-            "TIME_IN_FORCE_GOOD_TILL_DATE": TimeInForce.GTD,
-            "TIME_IN_FORCE_IMMEDIATE_OR_CANCEL": TimeInForce.IOC,
-            "TIME_IN_FORCE_FILL_OR_KILL": TimeInForce.FOK,
-        }.get(tif)
+        return TIME_IN_FORCE.get(tif)
 
     async def _handle_order_snapshot(self, message: Dict) -> None:
         payload = message.get("orderSubscriptionSnapshot") if isinstance(message, dict) else None

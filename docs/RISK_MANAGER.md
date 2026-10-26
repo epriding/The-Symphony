@@ -13,7 +13,7 @@ venv/bin/python -m pytest -q
 
 - `RiskManager.evaluate()` runs shared validation, then chooses `_evaluate_entry()` or `_evaluate_exit()`. `_approve()` handles final quantity rounding and approval expiry.
 - `RiskManager.evaluate_batch()` checks leg limits, calculates a common group size, and rechecks each leg against projected commitments.
-- `OrderCoordinator` owns submission and network calls. `_apply_paper_batch()` owns group rollback; `_reconcile_exchange()` refreshes one live account.
+- `OrderCoordinator` owns submission and network calls. Paper submissions enqueue scheduled execution; `_reconcile_exchange()` refreshes one live account. Legacy immediate-fill accounting fakes remain confined to tests.
 - `TradingState._apply_order_update()` preserves attribution, determines the new fill, applies cash/inventory changes, and records the result. `_FillAmounts` names the quantities and costs passed between those steps.
 - `PortfolioState.pending_orders` iterates open orders and local reservations. Each exposes `remaining_quantity` and `commitment`, so callers use the same definitions for reserved shares and USD.
 
@@ -35,6 +35,8 @@ config.risk_configs["PAPER"] = RiskConfig(
 )
 state = TradingState(config)
 # Supply live clients by exchange; paper uses its own simulator.
+# Set config.paper_execution to explicit venue rules before paper submission;
+# see docs/PAPER_TRADING.md and examples/paper_config.example.json.
 coordinator = OrderCoordinator(state, clients={})
 ```
 
@@ -44,6 +46,7 @@ coordinator = OrderCoordinator(state, clients={})
 - Strategies receive a typed `Snapshot`. Read account data from `snapshot.portfolios[portfolio_id]`. Snapshots are independent copies.
 - Legacy `config.paper_trading = {strategy: bool}` remains a routing input; explicit `strategy_portfolios` entries take precedence. Routes and risk settings are copied at state construction. Unknown strategies never default to live.
 - Extra risk configuration entries create independent paper portfolios. Set a strategy route and starting balances for each. Only `LIVE` routes to real clients.
+- Paper execution requires `config.paper_execution` with explicit venue profiles. `PaperSession` composes the scheduler, engine and coordinator for live public feeds or deterministic replay. See [paper trading usage](PAPER_TRADING.md) for setup; a paper-only session rejects routes to `LIVE`.
 
 Market metadata must include `tick_size`, `quantity_step`, `min_quantity`, and a conservative USD `fee_per_contract`. An absent value blocks trading rather than guessing venue rules. `min_notional` defaults to zero. Add overrides by `exchange:market_id` before inserting markets:
 
@@ -89,9 +92,11 @@ exit_signal = OrderIntent(
 result = await coordinator.submit(exit_signal)
 ```
 
-Exits bypass entry allocation, Kelly, and drawdown limits, while retaining freshness, market, price, precision, and inventory checks. They require confirmed account inventory AND strategy-owned inventory. Pending exits reserve both. SELL without `reduce_only` is rejected. This version does not open naked shorts. Paper holds YES and NO separately; live opposing entries in an already-held or committed market are rejected to avoid inventing cash/netting rules across strategies.
+Exits bypass entry allocation, Kelly, and drawdown limits, while retaining freshness, market, price, precision, and inventory checks. They require confirmed account inventory AND strategy-owned inventory. Pending exits reserve both, plus any fee shortfall that proceeds cannot cover. SELL without `reduce_only` is rejected. This version does not open naked shorts. Live opposing entries in an already-held or committed market are rejected. Paper profiles with `netted_outcomes=True` apply the same restriction; independent-outcome fixtures must opt out explicitly.
 
-`submit()` returns a `SubmissionResult`, including its `RiskDecision`, records, and status (`rejected`, `submitted`, `exchange_rejected`, `failed`, or `unknown`). Risk approval is not a promise of exchange acceptance. Reuse the same `intent_id` when retrying the same opportunity. Approved identifiers remain consumed even after cancellation or local failure; issue a new intent only for a deliberate new evaluation.
+`submit()` returns a `SubmissionResult`, including its `RiskDecision`, records, and status. Paper returns `pending` with `submission_ids`; scheduled reports later update the ledger. Live results can be `rejected`, `submitted`, `exchange_rejected`, `failed`, or `unknown`. Risk approval is not a promise of exchange acceptance. Reuse the same `intent_id` when retrying the same opportunity. Approved identifiers remain consumed even after cancellation or local failure; issue a new intent only for a deliberate new evaluation.
+
+Paper fee reserves are quantity-aware bounds from the configured fee model; actual fills charge their own fees/credits. LIMIT GTC/GTD orders can rest, and `post_only=True` rejects marketable arrivals. Paper cancellation returns whether the request was queued; reservations release only on observed terminal reports. A replace requires confirmed cancellation before a new approval. Slippage-bounded MARKET orders on variable price ladders are currently rejected; limit prices use the actual ladder.
 
 ## Batches
 
@@ -99,7 +104,7 @@ Exits bypass entry allocation, Kelly, and drawdown limits, while retaining fresh
 
 For dependent entries, use `OrderIntentBatch(legs=[...], quantity_ratios=[1, 2], capital_ceiling=100.0, ...)`. `evaluate_batch(batch, snapshot)` sizes the group with common ratios under all venue/category/market/total budgets, without standalone Kelly or assumed hedge offsets. All strategies must route to one portfolio when submitted. Common quantity increments preserve ratios; an infeasible minimum rejects the group. Batch IDs and leg IDs are idempotent.
 
-Live dependent submission currently returns `unsupported_batch_execution_policy`. Paper supports `execution_policy="paper_all_or_none"`: prepare and validate all fills, then apply the complete group as a ledger transaction. No part remains applied if accounting fails. This policy is a simulator property; it does not imply atomic exchange execution. Supporting live dependent execution requires a separate policy for rejected/timed-out legs and already-filled exposure.
+Live dependent submission currently returns `unsupported_batch_execution_policy`. Realistic paper batches require `execution_policy="paper_independent_legs"`, an explicit `execution_deadline`, and `dispatch_policy="concurrent"` or `"sequential"`. Each leg uses its own venue's latency, liquidity and operation budget. Failure requests cancellation of remaining legs; completed fills stay in the ledger. Separate risk-approved reduction intents are needed to unwind exposure. `market_equivalence` records a strategy's claimed instrument equivalence without granting risk offsets. The realistic engine rejects `paper_all_or_none`.
 
 ## Live account normalization and reconciliation
 
@@ -131,4 +136,6 @@ Risk evaluation performs no network I/O. Mutable state belongs to `TradingState`
 
 `risk.stop_loss_intents(await state.snapshot())` produces verified reduction requests using fresh outcome bids. Submit these through the coordinator. With `max_drawdown_pct` configured, new entries halt while current marked equity breaches the high-water limit. Reductions remain available. `state.cash_flow(portfolio_id, exchange, amount)` declares deposits/withdrawals and adjusts the baseline; paper also changes actual cash. For live flows, reconcile the actual balance before evaluating risk again.
 
-The offline harness and tests cover sizing, account separation, independent/group submission, cash/P&L, stop losses, drawdown, partial fills, replay, cancellation, and recovery. The paper simulator assumes complete immediate FOK/IOC fills at the supplied executable quote and uses the configured fee bound as its fee. It does not model depth or resting orders. A production runner must schedule strategy evaluation, reconciliation, and stop-loss checks. There is no durable order journal or strategy attribution recovery after process restart; audit live history before resuming a session that ended with unresolved submissions. Paper sessions restart from configured cash. New exchange adapters, live dependent execution, correlated portfolio Kelly, and a multi-instance launcher remain outside this scope.
+The offline harness and tests cover sizing, account separation, independent/group submission, cash/P&L, stop losses, drawdown, partial fills, replay, cancellation, and recovery. The paper simulator uses shared captured depth, conservative resting queues, venue fee models, and scheduled arrivals/reports/cancellations. [Paper trading usage](PAPER_TRADING.md) describes assumptions, API changes, public-only feed startup and current validation limits. Actual live-feed compatibility and timing calibration still require representative captures.
+
+A production runner must schedule strategy evaluation, reconciliation, and stop-loss checks. There is no durable order journal or strategy attribution recovery after process restart; audit live history before resuming a session that ended with unresolved submissions. Paper sessions restart from configured cash. Adding a venue needs a verified public-data adapter and rule profile; live dependent execution, correlated portfolio Kelly, and a multi-instance launcher remain separate.

@@ -7,7 +7,7 @@ import pytest
 from polymarket_us.errors import BadRequestError, InternalServerError
 
 from src.api.interfaces.polymarket_US import PolyUsClient, PolyUsWebsocketClient, _account_balance
-from src.api.polymarket.polyUS_api import PolymarketAPI
+from src.api.polymarket.polyus_rest_api import PolymarketAPI
 from src.utilities.classes import AccountConnectionEvent, OrderStatus, OrderType, TimeInForce
 
 
@@ -123,6 +123,21 @@ async def test_position_pagination_is_complete_and_uses_params_dict():
     assert set(result["positions"]) == {"a", "b"}
     assert pages.await_count == 2
     assert pages.call_args.args[0] == {"limit": 10, "cursor": "second"}
+
+
+@pytest.mark.asyncio
+async def test_market_pagination_stops_on_empty_page_and_uses_page_for_offset():
+    api = object.__new__(PolymarketAPI)
+    fetch_page = AsyncMock(side_effect=[
+        {"markets": [{"id": "a"}, {"id": "b"}]},
+        {"markets": []},
+    ])
+    api.get_markets = fetch_page
+
+    result = await api.get_all_markets()
+
+    assert result == {"markets": [{"id": "a"}, {"id": "b"}]}
+    assert [call.kwargs["offset"] for call in fetch_page.await_args_list] == [0, 2]
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 import time
 import math
+from decimal import Decimal
 
 from .classes import (
     AccountBalance, ApprovedOrder, MarketInfo, OrderBook, OrderRecord, OrderStatus,
@@ -24,6 +25,7 @@ class _FillAmounts:
     total_notional: float
     total_fees: float
     new_fees: float
+    exact_new_notional: str | None = None
 
 
 class TradingState:
@@ -226,6 +228,8 @@ class TradingState:
         portfolio = self.portfolios[record.portfolio_id]
         order_key = f"{record.exchange}:{record.order_id}"
         previous = portfolio.order_history.get(order_key)
+        if portfolio.paper and previous and record.revision and record.revision <= previous.revision:
+            return previous
         if approved and previous and not previous.strategy:
             # Recovery can assign a previously unattributed exchange fill.
             portfolio.filled_by_order.pop(order_key, None)
@@ -252,16 +256,14 @@ class TradingState:
         )
         if record.strategy and fill.quantity > 0:
             self._apply_strategy_fill(portfolio, record, fill)
-            self._remember_fill(portfolio, order_key, cumulative_quantity, fill)
         elif not record.strategy:
             if fill.quantity > 0:
                 portfolio.dirty_exchanges.add(record.exchange)
             # External fills have no strategy ownership. Position snapshots own
             # their inventory; only remember the counters here.
-            self._remember_fill(portfolio, order_key, cumulative_quantity, fill)
         else:
             self._apply_fill_adjustment(portfolio, record, order_key, fill)
-            self._remember_fill(portfolio, order_key, cumulative_quantity, fill)
+        self._remember_fill(portfolio, order_key, cumulative_quantity, fill)
 
         if execution_id:
             portfolio.seen_executions.add((order_key, execution_id))
@@ -316,8 +318,24 @@ class TradingState:
     ) -> _FillAmounts:
         # avgPx covers all fills. Subtract prior notional to obtain this delta's
         # price rather than applying the cumulative average to the new shares.
-        quantity_change = max(0, cumulative_quantity - known_quantity)
-        if record.average_fill_price is not None:
+        quantity_delta = Decimal(str(cumulative_quantity)) - Decimal(str(known_quantity))
+        quantity_change = float(max(Decimal(0), quantity_delta))
+        exact_delta = None
+        if record.cumulative_notional is not None:
+            total_exact = Decimal(record.cumulative_notional)
+            if not total_exact.is_finite() or total_exact < 0:
+                raise ValueError("Invalid cumulative notional")
+            previous_record = portfolio.order_history.get(order_key)
+            if previous_record and previous_record.cumulative_notional is not None:
+                previous_exact = previous_record.cumulative_notional
+            else:
+                previous_exact = str(portfolio.fill_notional_by_order.get(order_key, 0))
+            exact_delta = str(total_exact - Decimal(previous_exact))
+            total_notional = float(total_exact)
+            price = record.price
+            if quantity_change:
+                price = float(Decimal(exact_delta) / Decimal(str(quantity_change)))
+        elif record.average_fill_price is not None:
             if (isinstance(record.average_fill_price, bool)
                     or not math.isfinite(record.average_fill_price)
                     or not 0 <= record.average_fill_price <= 1):
@@ -336,10 +354,18 @@ class TradingState:
         total_fees = record.fees_paid
         if total_fees is None:
             total_fees = portfolio.fees_by_order.get(order_key, 0.0)
-        new_fees = total_fees - portfolio.fees_by_order.get(order_key, 0.0)
+        previous_fees = Decimal(str(portfolio.fees_by_order.get(order_key, 0.0)))
+        new_fees = float(Decimal(str(total_fees)) - previous_fees)
         if not math.isfinite(total_fees) or total_fees < 0 or new_fees < -1e-9:
             raise ValueError("Invalid cumulative fees")
-        return _FillAmounts(quantity_change, price, total_notional, total_fees, new_fees)
+        return _FillAmounts(
+            quantity=quantity_change,
+            price=price,
+            total_notional=total_notional,
+            total_fees=total_fees,
+            new_fees=new_fees,
+            exact_new_notional=exact_delta,
+        )
 
     def _apply_strategy_fill(self, portfolio, record, fill: _FillAmounts):
         # Validate both ledgers and paper cash before mutating either.
@@ -357,11 +383,14 @@ class TradingState:
                 raise ValueError("Sell fill exceeds inventory")
         if portfolio.paper:
             balance = portfolio.balances[record.exchange]["USD"]
-            cash_change = (-1 if record.side == Side.BUY else 1) * fill.quantity * fill.price - fill.new_fees
-            if balance.cash + cash_change < -1e-9:
+            notional = (Decimal(fill.exact_new_notional) if fill.exact_new_notional is not None
+                        else Decimal(str(fill.quantity)) * Decimal(str(fill.price)))
+            cash_change = (-1 if record.side == Side.BUY else 1) * notional - Decimal(str(fill.new_fees))
+            new_cash = Decimal(str(balance.cash)) + cash_change
+            if new_cash < Decimal("-0.000000001"):
                 raise ValueError("Paper fill exceeds cash")
             self._merge_fill(portfolio.positions, record, fill.quantity, fill.price)
-            balance.cash = max(0, balance.cash + cash_change)
+            balance.cash = float(max(Decimal(0), new_cash))
             balance.buying_power = balance.cash
             balance.timestamp = self.clock()
         else:
@@ -392,7 +421,8 @@ class TradingState:
         weighted costs also corrects realized P&L if some shares were already sold.
         Live account cash/inventory remain owned by exchange reconciliation.
         """
-        notional_change = fill.total_notional - portfolio.fill_notional_by_order.get(order_key, 0.0)
+        notional_change = (float(Decimal(fill.exact_new_notional)) if fill.exact_new_notional is not None
+                           else fill.total_notional - portfolio.fill_notional_by_order.get(order_key, 0.0))
         cost_changed = abs(notional_change) > 1e-9
         if not cost_changed and abs(fill.new_fees) <= 1e-9:
             return
@@ -418,7 +448,7 @@ class TradingState:
             if cost_changed:
                 positions, _ = self._replay_fills(corrected_fills)
                 portfolio.positions = positions
-            balance.cash = max(0, balance.cash + cash_change)
+            balance.cash = float(max(Decimal(0), Decimal(str(balance.cash)) + Decimal(str(cash_change))))
             balance.buying_power = balance.cash
             balance.timestamp = self.clock()
         else:
@@ -433,6 +463,48 @@ class TradingState:
         portfolio.filled_by_order[order_key] = cumulative_quantity
         portfolio.fill_notional_by_order[order_key] = fill.total_notional
         portfolio.fees_by_order[order_key] = fill.total_fees
+
+    def _apply_cash_credit(self, credit):
+        portfolio = self.portfolios[credit.portfolio_id]
+        amount = Decimal(credit.amount)
+        if not portfolio.paper or not amount.is_finite() or amount < 0 or not credit.credit_id:
+            raise ValueError("Invalid paper cash credit")
+        if credit.credit_id in portfolio.cash_credits:
+            if Decimal(str(portfolio.cash_credits[credit.credit_id])) != amount:
+                raise ValueError("Credit ID reused with a different amount")
+            return
+        balance = portfolio.balances[credit.exchange]["USD"]
+        balance.cash = float(Decimal(str(balance.cash)) + amount)
+        balance.buying_power, balance.timestamp = balance.cash, self.clock()
+        portfolio.cash_credits[credit.credit_id] = float(amount)
+        portfolio.realized_pnl += float(amount)
+
+    def _apply_settlement(self, event):
+        if set(event.payouts) != {"YES", "NO"}:
+            raise ValueError("Explicit YES and NO payouts are required")
+        payouts = {outcome: Decimal(value) for outcome, value in event.payouts.items()}
+        if any(not value.is_finite() or not 0 <= value <= 1 for value in payouts.values()):
+            raise ValueError("Invalid authoritative settlement payout")
+        key = f"{event.exchange}:{event.market_id}"
+        for portfolio in self.portfolios.values():
+            if not portfolio.paper or key in portfolio.settlements:
+                continue
+            for strategy, positions in list(portfolio.strategy_positions.items()):
+                for position in list(positions.values()):
+                    if (position.exchange, position.market_id) != (event.exchange, event.market_id):
+                        continue
+                    price = payouts[position.outcome]
+                    record = OrderRecord(
+                        f"settlement:{event.settlement_id}:{strategy}:{position.outcome}",
+                        event.market_id, event.exchange, position.outcome, Side.SELL,
+                        position.size, float(price), status=OrderStatus.FILLED,
+                        strategy=strategy, portfolio_id=portfolio.portfolio_id,
+                        filled_quantity=position.size, average_fill_price=float(price),
+                        cumulative_notional=str(Decimal(str(position.size)) * price),
+                        fees_paid=0, reason="authoritative_settlement", revision=1,
+                    )
+                    self._apply_order_update(record)
+            portfolio.settlements.add(key)
 
     def _replace_live_positions(self, positions, exchange):
         portfolio = self.portfolios["LIVE"]

@@ -3,8 +3,8 @@ from typing import List, Any, Dict
 import asyncio
 from ...utilities.classes import ApprovedOrder, AccountBalance, OrderRecord, Position, MarketInfo, OrderBook
 
-class RestClient(ABC):
-    """Live exchange contract; the coordinator routes paper execution separately."""
+class MarketDataClient(ABC):
+    """Public market discovery and depth, independent of any funded account."""
 
     @abstractmethod
     async def get_markets(self, active: bool = True, limit: int = 200, offset: Any = None) -> List[MarketInfo]:
@@ -13,6 +13,10 @@ class RestClient(ABC):
     @abstractmethod
     async def get_orderbook(self, market_id: str, outcome: str) -> OrderBook:
         pass
+
+
+class RestClient(MarketDataClient):
+    """Live exchange contract; the coordinator routes paper execution separately."""
 
     @abstractmethod
     async def get_positions(self) -> List[Position]:

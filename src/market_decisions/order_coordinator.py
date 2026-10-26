@@ -1,9 +1,11 @@
 """The sole submission gateway. All fill sources share the same ledger."""
 import asyncio
+import math
 from copy import deepcopy
 from dataclasses import replace
 
 from ..paper_trading.paper_trading_engine import PaperTradingEngine
+from ..paper_trading.fees import FeeReserveProvider
 from ..utilities.classes import (
     OrderIntent,
     OrderIntentBatch,
@@ -22,7 +24,17 @@ class OrderCoordinator:
     def __init__(self, state, clients=None, paper_engine=None):
         self.state = state
         self.clients = clients or {}
-        self.paper_engine = paper_engine or PaperTradingEngine()
+        self.paper_engine = paper_engine or PaperTradingEngine(state.config.paper_execution, state.clock)
+        if getattr(self.paper_engine, "asynchronous", False):
+            self.paper_engine.bind(self)
+            if self.paper_engine.config:
+                for portfolio_id, manager in state.risk_managers.items():
+                    if state.portfolios[portfolio_id].paper:
+                        manager.fee_reserve_provider = FeeReserveProvider(self.paper_engine.config, state.clock)
+                        manager.netted_exchanges = {
+                            name for name, rules in self.paper_engine.config.venues.items()
+                            if rules.netted_outcomes
+                        }
         # This lock serializes submissions and account events. The separate state
         # lock is released during network calls so market data can keep updating.
         self.lock = asyncio.Lock()
@@ -36,6 +48,9 @@ class OrderCoordinator:
             if portfolio_id is None:
                 return self._rejected("unknown_strategy_route")
             portfolio = self.state.portfolios[portfolio_id]
+            if portfolio.paper and getattr(self.paper_engine, "asynchronous", False):
+                if not self.paper_engine.config or intent.exchange not in self.paper_engine.config.venues:
+                    return self._rejected("missing_paper_venue_profile")
             if not portfolio.paper and intent.exchange not in self.clients:
                 return self._rejected("missing_exchange_client")
 
@@ -87,6 +102,9 @@ class OrderCoordinator:
 
         try:
             if paper:
+                if getattr(self.paper_engine, "asynchronous", False):
+                    identifier = self.paper_engine.enqueue(order, market)
+                    return SubmissionResult(decision, status="pending", submission_ids=[identifier])
                 incoming = await self.paper_engine.simulate_fill(order, market, quote)
             else:
                 incoming = await self.clients[order.exchange].place_order(order)
@@ -125,8 +143,15 @@ class OrderCoordinator:
                 return self._rejected("batch_requires_one_portfolio")
             portfolio_id = next(iter(routes))
             portfolio = self.state.portfolios[portfolio_id]
-            if not portfolio.paper or batch.execution_policy != "paper_all_or_none":
+            asynchronous = getattr(self.paper_engine, "asynchronous", False)
+            supported = "paper_independent_legs" if asynchronous else "paper_all_or_none"
+            if not portfolio.paper or batch.execution_policy != supported:
                 return self._rejected("unsupported_batch_execution_policy")
+            if asynchronous and (batch.dispatch_policy not in {"concurrent", "sequential"}
+                    or batch.execution_deadline is None
+                    or not math.isfinite(batch.execution_deadline)
+                    or batch.execution_deadline <= self.state.clock()):
+                return self._rejected("invalid_batch_execution_deadline_or_policy")
 
             async with self.state.lock:
                 self.state._refresh_performance()
@@ -137,6 +162,10 @@ class OrderCoordinator:
                     return SubmissionResult(decision)
                 self.state._reserve(decision)
             try:
+                if asynchronous:
+                    # Local queue insertion cannot dispatch until locks release.
+                    order_ids = self.paper_engine.enqueue_batch(batch, decision.orders, snapshot.markets)
+                    return SubmissionResult(decision, status="pending", submission_ids=order_ids)
                 records = await self._simulate_paper_batch(decision, snapshot, manager)
                 async with self.state.lock:
                     applied = self._apply_paper_batch(decision, records, portfolio_id)
@@ -187,6 +216,35 @@ class OrderCoordinator:
                 self.state._refresh_performance()
                 return deepcopy(result)
 
+    async def apply_paper_update(self, record, approved):
+        """Report delivery is outside engine and portfolio critical sections."""
+        async with self.lock:
+            async with self.state.lock:
+                if not self.state.portfolios[approved.portfolio_id].paper:
+                    raise ValueError("Paper reports cannot mutate a live account")
+                expected = (approved.exchange, approved.market_id, approved.outcome,
+                            approved.side, approved.size, approved.intent_id)
+                actual = (record.exchange, record.market_id, record.outcome,
+                          record.side, record.size, record.intent_id)
+                if actual != expected:
+                    raise ValueError("Paper response does not match approved order")
+                result = self.state._apply_order_update(record, approved=approved)
+                self.state._refresh_performance()
+                return deepcopy(result)
+
+    async def apply_paper_credit(self, credit):
+        async with self.lock:
+            async with self.state.lock:
+                self.state._apply_cash_credit(credit)
+                self.state._refresh_performance()
+
+    async def resolve_paper_submission(self, order_id):
+        record = self.paper_engine.get_order(order_id)
+        if record is None:
+            return None
+        approved = self.paper_engine.orders[order_id].approved
+        return await self.apply_paper_update(record, approved)
+
     async def apply_order_snapshot(self, orders, exchange, complete=True):
         """A missing order is not evidence of cancellation or lack of fills."""
         if not complete:
@@ -204,6 +262,12 @@ class OrderCoordinator:
         async with self.lock:
             async with self.state.lock:
                 portfolio = self.state.portfolios[portfolio_id]
+                if portfolio.paper and getattr(self.paper_engine, "asynchronous", False):
+                    working = self.paper_engine.orders.get(order_id)
+                    if not working or (working.approved.exchange, working.approved.portfolio_id) != (exchange, portfolio_id):
+                        return False
+                    # True means request queued; terminal confirmation arrives later.
+                    return self.paper_engine.enqueue_cancel(order_id)
                 order = deepcopy(portfolio.open_orders.get(f"{exchange}:{order_id}"))
             if order is None:
                 return False

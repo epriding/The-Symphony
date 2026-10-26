@@ -1,0 +1,113 @@
+{
+  "strategy_portfolios": {
+    "example": "PAPER"
+  },
+  "starting_balances": {
+    "PAPER": {
+      "POLYMARKET_US": 1000,
+      "KALSHI": 1000
+    }
+  },
+  "risk": {
+    "PAPER": {
+      "diversification": {
+        "other": 1
+      },
+      "max_position_exposure": 100,
+      "max_total_exposure": 1000,
+      "max_quote_age_seconds": 0.25
+    }
+  },
+  "execution": {
+    "seed": 7,
+    "session_id": "example-paper",
+    "assumptions": "Example latency, precision and operation budgets; verify account/market rules before capture. Not calibrated.",
+    "processing_delay": {
+      "seconds": 0.005
+    },
+    "venues": {
+      "POLYMARKET_US": {
+        "fees": {
+          "version": "POLYMARKET_US-example-verify-market-overrides",
+          "model": "polymarket_us",
+          "taker": ".0695",
+          "maker": "0",
+          "balance_precision": ".01",
+          "effective_from": 1792429200.0
+        },
+        "max_book_age": 0.25,
+        "outbound": {
+          "seconds": 0.025
+        },
+        "acknowledgement": {
+          "seconds": 0.005
+        },
+        "execution_report": {
+          "seconds": 0.005
+        },
+        "cancel": {
+          "seconds": 0.025
+        },
+        "request_rate": 10,
+        "request_capacity": 20,
+        "rate_policy": "reject",
+        "netted_outcomes": true
+      },
+      "KALSHI": {
+        "fees": {
+          "version": "KALSHI-example-verify-market-overrides",
+          "model": "kalshi",
+          "taker": ".07",
+          "maker": "0",
+          "balance_precision": ".0001",
+          "effective_from": 1783382400.0
+        },
+        "max_book_age": 0.25,
+        "outbound": {
+          "seconds": 0.025
+        },
+        "acknowledgement": {
+          "seconds": 0.005
+        },
+        "execution_report": {
+          "seconds": 0.005
+        },
+        "cancel": {
+          "seconds": 0.025
+        },
+        "request_rate": 10,
+        "request_capacity": 20,
+        "rate_policy": "reject",
+        "netted_outcomes": true
+      }
+    }
+  },
+  "feeds": {
+    "POLYMARKET_US": {
+      "markets": [
+        "REPLACE_WITH_US_MARKET_SLUG"
+      ],
+      "read_interval": 1,
+      "market_rules": {
+        "REPLACE_WITH_US_MARKET_SLUG": {
+          "tick_size": ".01",
+          "quantity_step": "1",
+          "min_quantity": "1"
+        }
+      }
+    },
+    "KALSHI": {
+      "markets": [
+        "REPLACE_WITH_KALSHI_TICKER"
+      ],
+      "read_interval": 1,
+      "market_rules": {
+        "REPLACE_WITH_KALSHI_TICKER": {
+          "tick_size": ".01",
+          "quantity_step": "1",
+          "min_quantity": "1"
+        }
+      }
+    }
+  }
+}

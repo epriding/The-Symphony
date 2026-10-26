@@ -2,10 +2,11 @@
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import replace
-from decimal import Decimal, ROUND_FLOOR
+from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
 from fractions import Fraction
 from math import gcd, isfinite, lcm
 import time
+from ..utilities.trading_rules import valid_price
 
 from ..utilities.classes import (
     ApprovedOrder, Exposure, OrderIntent, OrderIntentBatch, OrderType,
@@ -40,6 +41,8 @@ class RiskManager:
         self.config = config
         self.portfolio_id = portfolio_id
         self.clock = clock
+        self.fee_reserve_provider = None
+        self.netted_exchanges = set()
 
     def kelly_criterion(self, bot_probability, price, resolution_date):
         if not finite(bot_probability) or not 0 <= bot_probability <= 1:
@@ -158,7 +161,7 @@ class RiskManager:
         if not balance.buying_power_includes_holds:
             reserved += sum(
                 order.commitment for order in portfolio.open_orders.values()
-                if order.exchange == exchange and order.side == Side.BUY
+                if order.exchange == exchange
             )
         return max(0.0, balance.buying_power - reserved)
 
@@ -187,6 +190,8 @@ class RiskManager:
 
         price = intent.price
         if intent.order_type == OrderType.MARKET:
+            if market.price_ranges:
+                return self._reject("bounded_market_requires_constant_tick_grid")
             if type(intent.slippage) is not int or intent.slippage < 0:
                 return self._reject("unbounded_market_order")
             direction = 1 if intent.side == Side.BUY else -1
@@ -243,6 +248,9 @@ class RiskManager:
             return "invalid_price"
         if intent.tif not in tuple(TimeInForce) or intent.order_type not in tuple(OrderType):
             return "invalid_execution_instruction"
+        if intent.post_only and (intent.order_type != OrderType.LIMIT
+                                 or intent.tif not in (TimeInForce.GTC, TimeInForce.GTD)):
+            return "invalid_post_only_instruction"
         if intent.tif == TimeInForce.GTD and (
             not finite(intent.good_till_date) or intent.good_till_date <= now
         ):
@@ -261,8 +269,7 @@ class RiskManager:
         if (any(not finite(value) or value < 0 for value in rules)
                 or not market.tick_size or not market.quantity_step or not market.min_quantity):
             return "unknown_market_rules"
-        ticks = Decimal(str(intent.price)) / Decimal(str(market.tick_size))
-        if ticks != ticks.to_integral_value():
+        if not valid_price(market, intent.price, intent.outcome):
             return "invalid_price_tick"
         return None
 
@@ -317,7 +324,10 @@ class RiskManager:
         available_inventory = max(0, held.size - total_reserved)
         requested_inventory = max(0, owned.size * intent.close_fraction - owned_reserved)
         quantity = min(available_inventory, requested_inventory)
-        return self._approve(intent, market, price, owned.category, quantity, now)
+        decision = self._approve(intent, market, price, owned.category, quantity, now)
+        if decision.approved and decision.orders[0].commitment > self.available_cash(portfolio, intent.exchange) + 1e-9:
+            return self._reject("insufficient_exit_fee_cash")
+        return decision
 
     def _evaluate_entry(
         self, intent, snapshot, market, price, category, now, *, group_budget, group_quantity,
@@ -327,7 +337,7 @@ class RiskManager:
             return self._reject("reduce_only_buy_unsupported")
         if portfolio.entries_halted or portfolio.requires_reconciliation:
             return self._reject("account_requires_reconciliation")
-        if not portfolio.paper and self._has_opposite_commitment(intent, portfolio):
+        if (not portfolio.paper or intent.exchange in self.netted_exchanges) and self._has_opposite_commitment(intent, portfolio):
             return self._reject("opposite_inventory_conflict")
 
         equity = self.equity(snapshot)
@@ -381,14 +391,47 @@ class RiskManager:
         cost_per_contract = price + market.fee_per_contract
         quantity = available_dollars / cost_per_contract
         sizing.update(budgets)
-        if group_quantity is not None:
+        if group_quantity is not None and not self.fee_reserve_provider:
             if group_quantity * cost_per_contract > available_dollars + 1e-9:
                 return self._reject(f"batch_{limiting_budget}")
+        if group_quantity is not None:
             quantity = group_quantity
+        if self.fee_reserve_provider:
+            try:
+                if group_quantity is not None:
+                    fee_reserve = self.fee_reserve_provider(intent, market, quantity, price)
+                    if quantity * price + fee_reserve > available_dollars + 1e-9:
+                        return self._reject(f"batch_{limiting_budget}")
+                else:
+                    quantity = self._quantity_within_fee_budget(intent, market, price, available_dollars)
+                if group_budget is None and quantity > 0:
+                    fee_reserve = self.fee_reserve_provider(intent, market, quantity, price)
+                    effective_price = price + fee_reserve / quantity
+                    if effective_price >= intent.estimated_probability:
+                        return self._reject("edge_erased_by_fee_rounding")
+            except (ValueError, KeyError):
+                return self._reject("paper_fee_profile_unavailable")
         return self._approve(
             intent, market, price, category, quantity, now,
             sizing=sizing, limiting_budget=limiting_budget,
         )
+
+    def _quantity_within_fee_budget(self, intent, market, price, budget):
+        """Find the largest quantity increment affordable after fee rounding."""
+        step = Decimal(str(market.quantity_step))
+        max_quantity = Decimal(str(budget)) / Decimal(str(price))
+        lower_steps = 0
+        upper_steps = int((max_quantity / step).to_integral_value(rounding=ROUND_CEILING))
+        while lower_steps < upper_steps:
+            candidate_steps = (lower_steps + upper_steps + 1) // 2
+            candidate_quantity = float(Decimal(candidate_steps) * step)
+            fee_reserve = self.fee_reserve_provider(intent, market, candidate_quantity, price)
+            total_cost = candidate_quantity * price + fee_reserve
+            if total_cost <= budget + 1e-9:
+                lower_steps = candidate_steps
+            else:
+                upper_steps = candidate_steps - 1
+        return float(Decimal(lower_steps) * step)
 
     def _has_opposite_commitment(self, intent, portfolio) -> bool:
         opposite = "NO" if intent.outcome == "YES" else "YES"
@@ -422,10 +465,16 @@ class RiskManager:
             intent.created_at + self.config.max_signal_age_seconds,
             intent.expires_at or float("inf"),
         )
+        try:
+            fee_reserve = (self.fee_reserve_provider(intent, market, quantity, price)
+                           if self.fee_reserve_provider else None)
+        except (ValueError, KeyError):
+            return self._reject("paper_fee_profile_unavailable")
         order = ApprovedOrder(
             intent=intent, portfolio_id=self.portfolio_id, category=category,
             size=quantity, price=price, fee_per_contract=market.fee_per_contract,
             approved_until=valid_until,
+            fee_reserve=fee_reserve,
         )
         return RiskDecision(True, "approved", [order], sizing or {}, limiting_budget)
 
@@ -501,6 +550,8 @@ class RiskManager:
             )
             orders.append(order)
             projected.portfolios[self.portfolio_id].reservations[order.intent_id] = order
+        if sum(order.commitment for order in orders) > batch.capital_ceiling + 1e-9:
+            return self._reject("batch_fee_budget")
         return RiskDecision(True, "approved", orders, {"scale": float(scale)}, "group_budget")
 
     def _batch_scale_increment(self, batch, leg_limits, snapshot) -> Fraction:

@@ -25,6 +25,7 @@ from .classes import (
 )
 from .logger import setup_logger
 from .trading_state import TradingState
+from .market_events import PublicEventEnvelope, PublicConnectionEvent, MarketStatusEvent, SettlementEvent
 
 
 logger = setup_logger(__name__)
@@ -63,7 +64,9 @@ class WebsocketEventIngestor:
                 self.websocket_client.queue.task_done()
 
     async def handle_event(self, event: object) -> None:
-        if isinstance(event, AccountConnectionEvent):
+        if isinstance(event, (PublicEventEnvelope, PublicConnectionEvent, MarketStatusEvent, SettlementEvent)):
+            await self._forward(event)
+        elif isinstance(event, AccountConnectionEvent):
             async with self.state.lock:
                 portfolio = self.state.portfolios["LIVE"]
                 self.state._invalidate_exchange(event.exchange)

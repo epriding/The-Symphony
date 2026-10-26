@@ -35,11 +35,14 @@ class PolymarketAPI:
         all_markets = []
         while True:
             response = await self.get_markets(active=active, limit=1000, offset=offset)
-            all_markets.extend(response["markets"])
+            page = response["markets"]
+            if not page:
+                break
+            all_markets.extend(page)
             if limit and len(all_markets) >= limit:
                 all_markets = all_markets[:limit]
                 break
-            offset += len(response["markets"])
+            offset += len(page)
         return {"markets": all_markets}
 
     def _invert_book(self, yes_book: Dict) -> Dict:
@@ -68,6 +71,9 @@ class PolymarketAPI:
 
     async def get_bbo(self, slug: str) -> Dict:
         return await self.client.markets.bbo(slug)
+
+    async def get_settlement(self, slug: str) -> Dict:
+        return await self.client.markets.settlement(slug)
 
     async def create_order(
         self, slug, intent, order_type, price, quantity, tif,
