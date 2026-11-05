@@ -267,3 +267,271 @@ class Reporter:
                 for row in self.engine.audit:
                     output.write(json.dumps(row, default=str, sort_keys=True) + "\n")
         return summary
+
+
+class BoundedReporter(Reporter):
+    """Full-session streams and scalar totals over committed, paged history.
+
+    No legacy historical arrays are built. Pending future marks live in SQLite,
+    including marks whose horizon never receives another executable book.
+    """
+    details = (('executions', 'executions.jsonl'), ('markouts', 'markouts.jsonl'),
+               ('order_timings', 'order_timings.jsonl'), ('groups', 'groups.jsonl'))
+
+    def __init__(self, engine, history_store):
+        self.engine = engine
+        self.history_store = history_store
+        self.markouts = {}
+        self.pending_markouts = []
+        self._observation_signature = None
+
+    def observe(self):
+        # The session's bounded async seam invokes observe_async after committing
+        # determined executions. Future horizon work remains in SQLite.
+        return None
+
+    def _flush_markouts(self, conn, *, force=False):
+        store = self.history_store
+        if not self.markouts or (not force and len(self.markouts) < store.page_size):
+            return
+        for identity, row in self.markouts.items():
+            if store._put(conn, 'markout_ids', identity, True):
+                store._append(conn, 'markouts', row)
+            conn.execute('DELETE FROM pending_marks WHERE identity=?', (identity,))
+        conn.commit()
+        # Pending SQLite rows and these bounded determined rows both survive a
+        # failed commit. Retire the hot batch only after a real durable commit.
+        self.markouts.clear()
+
+    @staticmethod
+    def _markout_row(execution, horizon, identity, observed_at, quotes):
+        bid, ask = quotes[execution.outcome]
+        if bid is None or ask is None:
+            return None
+        mid = (dec(bid) + dec(ask)) / 2
+        direction = 1 if execution.side == 'BUY' else -1
+        return dict(kind='markout', identity=identity,
+            execution_id=execution.execution_id, order_id=execution.order_id,
+            quantity=execution.quantity, side=execution.side, price=execution.price,
+            horizon=horizon, observed_at=observed_at,
+            dollars=str(direction * (mid-dec(execution.price))*dec(execution.quantity)), missing=False)
+
+    async def observe_async(self, *, force=False):
+        store = self.history_store
+        now = self.engine.clock()
+        books = []
+        for (exchange, market), pool in self.engine.books.items():
+            if pool.executable(now, self.engine.config.venues[exchange].max_book_age):
+                continue
+            if pool.quote('SELL') is None or pool.quote('BUY') is None:
+                continue
+            # Copy only the current finite quote set. The worker must not read
+            # mutable book state while public input advances on the loop.
+            quotes = {outcome: (pool.quote('SELL', outcome), pool.quote('BUY', outcome))
+                      for outcome in ('YES', 'NO')}
+            books.append((exchange, market, min(now, pool.received_at), quotes))
+        # These immutable executions already have finite engine admission bounds
+        # and stay authoritative until their own archive commit. Observing them
+        # now does not require an execution commit for every individual fill.
+        hot_executions = tuple(self.engine.executions)
+        if not books and not self.markouts:
+            self._observation_signature = None
+            return
+        signature = (
+            tuple((exchange, market, cutoff, tuple(quotes.items()))
+                  for exchange, market, cutoff, quotes in books),
+            tuple((row.execution_id, row.order_id, row.exchange, row.market_id,
+                   row.outcome, row.side, row.quantity, row.price, row.timestamp)
+                  for row in hot_executions),
+            tuple(self.engine.config.markout_horizons),
+        )
+        if (not force and len(self.markouts) < store.page_size and
+                self._observation_signature == (signature, store._change_count)):
+            return
+        # Failed work must remain retryable even with unchanged books and fills.
+        self._observation_signature = None
+
+        def commit(conn):
+            self._flush_markouts(conn)
+            current_books = {(exchange, market): (cutoff, quotes)
+                             for exchange, market, cutoff, quotes in books}
+            for execution in hot_executions:
+                current = current_books.get((execution.exchange, execution.market_id))
+                if current is None:
+                    continue
+                cutoff, quotes = current
+                for horizon in self.engine.config.markout_horizons:
+                    if execution.timestamp + horizon > cutoff:
+                        continue
+                    identity = f'{execution.execution_id}:{horizon}'
+                    if (identity in self.markouts or
+                            store._get(conn, 'markout_ids', identity, False)):
+                        continue
+                    row = self._markout_row(execution, horizon, identity, now, quotes)
+                    if row is not None:
+                        self.markouts[identity] = row
+                        self._flush_markouts(conn)
+            for exchange, market, cutoff, quotes in books:
+                after_due, after_id = -float('inf'), ''
+                while True:
+                    store._check_deadline()
+                    rows = conn.execute(
+                        'SELECT identity,due,value FROM pending_marks WHERE exchange=? AND market=? AND due<=? AND (due>? OR (due=? AND identity>?)) ORDER BY due,identity LIMIT ?',
+                        (exchange, market, cutoff, after_due, after_due, after_id, store.page_size)).fetchmany(store.page_size)
+                    if not rows:
+                        break
+                    after_id, after_due = rows[-1][0], rows[-1][1]
+                    for identity, due, raw in rows:
+                        if identity in self.markouts:
+                            continue
+                        value = store._decode(raw)
+                        execution, horizon = value['execution'], value['horizon']
+                        row = self._markout_row(execution, horizon, identity, now, quotes)
+                        if row is not None:
+                            self.markouts[identity] = row
+                            self._flush_markouts(conn)
+            # A partial page remains bounded in RAM while its original pending
+            # rows remain durable. Queries/finalization force its real commit.
+            self._flush_markouts(conn, force=force)
+            # Return this operation's boundary. A writer queued after us can
+            # advance the store counter before the event loop resumes.
+            return conn.total_changes
+        observed_changes = await store.run(commit)
+        self._observation_signature = (signature, observed_changes)
+
+    @staticmethod
+    def _execution_totals_value(aggregate):
+        totals = {key: Decimal(0) for key in ('fees', 'credits', 'turnover',
+            'execution_cost_vs_mid', 'slippage_vs_decision_quote', 'spread', 'delay',
+            'depth_walking', 'missing_benchmark_quantity')}
+        totals.update(aggregate.get('totals', {}))
+        result = {key: str(totals[key]) for key in ('fees', 'credits', 'turnover', 'execution_cost_vs_mid', 'slippage_vs_decision_quote')}
+        result['all_in_cost_vs_mid'] = str(totals['execution_cost_vs_mid'] + totals['fees'] - totals['credits'])
+        result['cost_components'] = {key: str(totals[key]) for key in ('spread', 'delay', 'depth_walking', 'missing_benchmark_quantity')}
+        return result, aggregate.get('accounts', {}), aggregate.get('roles', {}), aggregate.get('executions', 0)
+
+    def _bounded_accounts(self, state, execution_accounts, credits):
+        accounts = {}
+        snapshot = state._snapshot()
+        for pid, portfolio in state.portfolios.items():
+            if not portfolio.paper:
+                continue
+            fees = execution_accounts.get(pid, {}).get('fees', Decimal(0))
+            credit = credits.get(pid, Decimal(0))
+            equity = state.risk_managers[pid].equity(snapshot)
+            starting = sum((dec(v) for v in state.config.paper_starting_balances.get(pid, {}).values()), Decimal(0))
+            net = None if equity is None else dec(equity) - starting - dec(portfolio.net_cash_flows)
+            drawdown = None
+            if equity is not None and portfolio.equity_high_water:
+                drawdown = max(0, portfolio.equity_high_water - equity) / portfolio.equity_high_water
+            accounts[pid] = dict(cash={venue: balances['USD'].cash for venue, balances in portfolio.balances.items()},
+                equity=equity, realized_pnl=portfolio.realized_pnl,
+                net_pnl=None if net is None else str(net),
+                gross_pnl=None if net is None else str(net + fees - credit),
+                fees=str(fees), credits=str(credit), drawdown=drawdown,
+                open_positions=len(portfolio.positions), open_orders=len(portfolio.open_orders),
+                pending_reservations=len(portfolio.reservations),
+                reserved_cash=sum(order.commitment for order in portfolio.pending_orders),
+                liquidation=[self._liquidation_estimate(position, state) for position in portfolio.positions.values()])
+        return accounts
+
+    def _summary_data(self, conn):
+        store = self.history_store
+        self._flush_markouts(conn, force=True)
+        # Every historical total is updated atomically with its underlying row.
+        # Finalization reads a bounded number of aggregates, not past fills.
+        return dict(orders=store._get(conn, '_summary', 'orders', {}),
+            executions=store._get(conn, '_summary', 'executions', {}),
+            credits={pid: store._get(conn, '_summary', ('credits', pid), Decimal(0))
+                     for pid in self.engine.coordinator.state.portfolios},
+            missing=conn.execute('SELECT COUNT(*) FROM pending_marks').fetchone()[0],
+            markouts=store._count(conn, 'markouts'), details=store._detail_references(conn))
+
+    def _summary_value(self, state, data):
+        orders = data['orders']
+        execution, account, roles, execution_count = self._execution_totals_value(data['executions'])
+        venues = {venue: dict(orders=orders.get('venues', {}).get(venue, 0), roles=roles.get(venue, {}))
+                  for venue in self.engine.config.venues}
+        strategies = {name: dict(orders=value['orders'], statuses={key: count for key, count in value['statuses'].items() if count})
+                      for name, value in orders.get('strategies', {}).items()}
+        return dict(session_id=self.engine.config.session_id, assumptions=self.engine.config.assumptions,
+            counts={key: count for key, count in orders.get('counts', {}).items() if count},
+            submitted=orders.get('submitted', 0), full_fills=orders.get('full', 0),
+            partial_fills=orders.get('partial', 0), zero_fills=orders.get('zero', 0),
+            executions=execution_count, **execution,
+            accounts=self._bounded_accounts(state, account, data['credits']),
+            diagnostics=dict(self.engine.diagnostics), markouts=dict(scope='full-session', records=data['markouts']),
+            missing_markouts=data['missing'], peak_pending_events=self.engine.scheduler.peak_pending,
+            processing_wall_time=self.engine.scheduler.processing_metrics(),
+            undelivered_reports=len(self.engine.outbox) + len(self.engine.credit_outbox),
+            audit_window_events=len(self.engine.audit), audit_total_events=sum(self.engine.diagnostics.values()),
+            full_audit_streamed=self.engine.audit_path is not None, by_venue=venues,
+            by_strategy=strategies, by_time_in_force={key: count for key, count in orders.get('tif', {}).items() if count},
+            history=dict(scope='full-session', schema_version=1, database='history.sqlite3',
+                hot_view_scope='active state plus configured terminal history window', details=data['details']))
+
+    def summary(self, state):
+        return self._summary_value(state, self.history_store._call(self._summary_data))
+
+    async def summary_async(self, state):
+        await self.engine.compact(force=True)
+        await self.observe_async(force=True)
+        return self._summary_value(state, await self.history_store.run(self._summary_data))
+
+    def _finalize_details(self, conn):
+        store = self.history_store
+        self._flush_markouts(conn, force=True)
+        for oid, order in self.engine.orders.items():
+            if store._put(conn, 'timing_ids', oid, True):
+                store._append(conn, 'order_timings', self.engine._timing(order))
+        for bid, group in self.engine.groups.items():
+            if store._put(conn, 'group_ids', bid, True):
+                store._append(conn, 'groups', self.engine._group_detail(bid, group))
+        cursor = conn.execute('SELECT identity,value FROM pending_marks ORDER BY due,identity')
+        while True:
+            rows = cursor.fetchmany(store.page_size)
+            if not rows:
+                break
+            store._check_deadline()
+            for identity, raw in rows:
+                value = store._decode(raw)
+                execution = value['execution']
+                if store._put(conn, 'markout_ids', identity, True):
+                    store._append(conn, 'markouts', dict(kind='markout', identity=identity,
+                        execution_id=execution.execution_id, horizon=value['horizon'],
+                        observed_at=None, dollars=None, missing=True))
+        conn.commit()
+
+    def _copy_details(self, conn, path):
+        path.mkdir(parents=True, exist_ok=True)
+        if path.resolve() == self.history_store.path.parent.resolve():
+            return
+        # Alternate destinations remain streamed and deadline checked. Runtime
+        # finalization uses the already continuously written session directory.
+        for _, filename in self.details:
+            with (self.history_store.path.parent / filename).open('rb') as source, (path / filename).open('wb') as output:
+                while chunk := source.read(self.history_store.max_record_bytes):
+                    self.history_store._check_deadline()
+                    output.write(chunk)
+
+    def write(self, directory, state):
+        path = Path(directory)
+        store = self.history_store
+        store._call(self._finalize_details)
+        store._call(lambda conn: self._copy_details(conn, path))
+        summary = self.summary(state)
+        encoded = json.dumps(summary, indent=2, allow_nan=False) + '\n'
+        store._call(lambda conn: (path / 'summary.json').write_text(encoded))
+        return summary
+
+    async def write_async(self, directory, state):
+        path = Path(directory)
+        store = self.history_store
+        await self.engine.compact(force=True)
+        await self.observe_async(force=True)
+        await store.run(self._finalize_details)
+        await store.run(lambda conn: self._copy_details(conn, path))
+        summary = await self.summary_async(state)
+        encoded = json.dumps(summary, indent=2, allow_nan=False) + '\n'
+        await store.run(lambda conn: (path / 'summary.json').write_text(encoded))
+        return summary

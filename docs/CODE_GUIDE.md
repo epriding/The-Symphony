@@ -30,7 +30,15 @@ Cancellation follows the same timing model: queuing a request does not confirm c
 | Live US account adapter | [polymarket_US.py](../src/api/interfaces/polymarket_US.py), [polyus_rest_api.py](../src/api/polymarket/polyus_rest_api.py) | Translate real account/order operations and SDK responses |
 | Output | [recording.py](../src/paper_trading/recording.py), [reporting.py](../src/paper_trading/reporting.py) | Preserve replay inputs and export execution/account diagnostics |
 
-`main.py` and `src/bot.py` remain the production-loop scaffold. `src/strategies/base_strategy.py` defines the strategy interface; it does not schedule strategies itself.
+The [paper bot runtime](BOT_RUNTIME.md) starts at [main.py](../main.py) and the
+[src.bot facade](../src/bot.py). [runtime.py](../src/paper_trading/runtime.py)
+owns public producers, readiness, strategy slots, periodic risk and finite
+shutdown around the same session/coordinator/ledger. Strategies receive isolated
+[contexts](../src/strategies/context.py) and snapshots; they never drive the
+mutable account. [history.py](../src/paper_trading/history.py) supplies a bounded
+worker and indexed archival evidence, while the bounded reporter streams complete
+history and returns aggregates. Legacy callers can still use the original
+session and reporter interfaces without the archive collaborator.
 
 ## Details that matter when changing code
 
@@ -40,7 +48,7 @@ Cancellation follows the same timing model: queuing a request does not confirm c
 - Matching and fees use `Decimal`. Legacy account/public interfaces retain floats; exact cumulative notional accompanies paper reports so cash uses the executed decimal amount.
 - `BookPool.executable()` returns a blocking reason, or an empty string for usable depth. A truthy result means execution is blocked.
 - Scheduler order is timestamp, priority, then insertion sequence. Among work queued for one advance, equal-time public events precede cancels/expiry, arrivals, and private reports. Recorded driver advances preserve those boundaries; later inputs cannot overtake completed callbacks.
-- The coordinator and state locks protect reservation/account updates. Timer delays and network calls run outside the state lock. `TradingState` synchronous helpers prefixed with `_` expect their caller to hold that lock.
+- The coordinator and state locks protect reservation/account updates. Timer delays and network calls run outside the state lock. `TradingState` synchronous helpers prefixed with `_` expect their caller to hold that lock. Pure internal risk reads can use `_risk_view()` synchronously within that lock; the view must not escape it. Public strategy snapshots and batch simulations that span awaits keep independent copies.
 - Revisions, cumulative counters and stable execution IDs prevent duplicate or late reports from applying fills twice. Preserve those checks during refactors.
 
 ## Verify behavior

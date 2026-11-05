@@ -1,0 +1,142 @@
+{
+  "strategy_portfolios": {},
+  "starting_balances": {
+    "PAPER": {
+      "POLYMARKET_US": 1000,
+      "KALSHI": 1000
+    }
+  },
+  "risk": {
+    "PAPER": {
+      "diversification": {
+        "other": 1
+      },
+      "max_position_exposure": 0.5,
+      "max_total_exposure": 10,
+      "stop_loss_pct": 100,
+      "max_quote_age_seconds": 5
+    }
+  },
+  "execution": {
+    "seed": 7,
+    "session_id": "public-observation-example",
+    "assumptions": "Synthetic unmeasured example numbers. Replace markets and verify fees, precision, timing and deployment limits before read-only observation; not calibrated.",
+    "processing_delay": {
+      "seconds": 0
+    },
+    "max_pending_events": 1024,
+    "max_outbox": 128,
+    "markout_horizons": [
+      0.01,
+      0.05
+    ],
+    "venues": {
+      "POLYMARKET_US": {
+        "fees": {
+          "version": "synthetic-zero-fee",
+          "model": "flat",
+          "taker": "0",
+          "maker": "0",
+          "balance_precision": ".01",
+          "effective_from": 0
+        },
+        "max_book_age": 5,
+        "outbound": {
+          "seconds": 0
+        },
+        "acknowledgement": {
+          "seconds": 0
+        },
+        "execution_report": {
+          "seconds": 0
+        },
+        "cancel": {
+          "seconds": 0
+        },
+        "request_rate": 1000,
+        "request_capacity": 1000,
+        "rate_policy": "reject",
+        "netted_outcomes": true
+      },
+      "KALSHI": {
+        "fees": {
+          "version": "synthetic-zero-fee",
+          "model": "flat",
+          "taker": "0",
+          "maker": "0",
+          "balance_precision": ".01",
+          "effective_from": 0
+        },
+        "max_book_age": 5,
+        "outbound": {
+          "seconds": 0
+        },
+        "acknowledgement": {
+          "seconds": 0
+        },
+        "execution_report": {
+          "seconds": 0
+        },
+        "cancel": {
+          "seconds": 0
+        },
+        "request_rate": 1000,
+        "request_capacity": 1000,
+        "rate_policy": "reject",
+        "netted_outcomes": true
+      }
+    }
+  },
+  "feeds": {
+    "POLYMARKET_US": {
+      "key_id_env": "POLY_KEY_ID",
+      "secret_key_env": "POLY_SECRET_KEY",
+      "markets": [
+        "REPLACE_WITH_US_MARKET_SLUG"
+      ],
+      "read_interval": 0.01,
+      "market_rules": {
+        "REPLACE_WITH_US_MARKET_SLUG": {
+          "tick_size": ".01",
+          "quantity_step": "1",
+          "min_quantity": "1"
+        }
+      }
+    },
+    "KALSHI": {
+      "key_id_env": "KALSHI_KEY_ID",
+      "private_key_env": "KALSHI_SECRET_KEY",
+      "markets": [
+        "REPLACE_WITH_KALSHI_TICKER"
+      ],
+      "read_interval": 0.01,
+      "market_rules": {
+        "REPLACE_WITH_KALSHI_TICKER": {
+          "tick_size": ".01",
+          "quantity_step": "1",
+          "min_quantity": "1"
+        }
+      }
+    }
+  },
+  "strategies": [],
+  "runtime": {
+    "source": "public",
+    "observe_only": true,
+    "startup_timeout_seconds": 1,
+    "strategy_timeout_seconds": 0.5,
+    "risk_interval_seconds": 0.02,
+    "shutdown_grace_seconds": 1,
+    "limits": {
+      "max_strategies": 8,
+      "max_markets": 8,
+      "max_active_orders": 64,
+      "max_positions": 32,
+      "max_intents_per_callback": 8,
+      "max_hot_history_records": 16,
+      "max_archive_cache_records": 8,
+      "max_event_bytes": 262144,
+      "memory_budget_bytes": 67108864
+    }
+  }
+}

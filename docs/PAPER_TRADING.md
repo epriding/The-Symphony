@@ -2,7 +2,7 @@
 
 Paper execution uses one shared engine for Polymarket US and Kalshi. Orders pass through the existing risk manager, reserve funds or inventory, arrive after configured delays, consume available depth or join a conservative queue, and update the existing portfolio ledger through delayed reports. Adding another venue requires a public-data adapter and verified venue rules; it does not require a second matching engine.
 
-The implementation has offline regression coverage and a deterministic two-venue example. Authenticated live-feed capture and empirical execution calibration have **not** been verified. Example latencies, request budgets, precision overrides, and starting balances are assumptions. The production bot loop remains separate.
+The implementation has offline regression coverage and a deterministic two-venue example. Authenticated live-feed capture and empirical execution calibration have **not** been verified. Example latencies, request budgets, precision overrides, and starting balances are assumptions. The [paper bot runtime](BOT_RUNTIME.md) adds supervised multi-strategy execution, explicit public observation, periodic risk, bounded working state and local archival. The session APIs below remain available with their legacy behavior.
 
 ## Run the offline example
 
@@ -96,7 +96,7 @@ The factory receives a new session with controlled clock, IDs and independent se
 - Timing is based on data received and available to the collector. Source timestamps and receipt-only timestamps remain distinguishable. This model cannot reconstruct unreceived exchange events or promise real queue position. Measure live transport and processing behavior before using it for HFT conclusions.
 - Liquidation reports show only depth-covered quantity, after estimated exit fees; insufficient/stale depth or unavailable fees produce an incomplete/unavailable estimate. Markouts require actual later book evidence and never influence earlier fills.
 - Collector/scheduler/report queues and the in-memory audit window are bounded. Full inputs/audits stream to disk; order, execution, trade-deduplication and markout histories grow with session activity. The synthetic book-only benchmark does not establish a constant-memory bound for arbitrarily long trading sessions.
-- Shutdown finalizes the capture and retains unresolved capital/inventory in reports. There is no durable process-resume mechanism, native amendment model, live Kalshi order submission, automatic hedge/unwind, or production strategy orchestration. Advanced calibrated queues, impact and latency reconstruction remain in [the research notes](../notes.md#future-paper-trading-research).
+- Shutdown finalizes the capture and retains unresolved capital/inventory in reports. There is no durable process-resume mechanism, native amendment model, live Kalshi order submission, automatic hedge/unwind, or production strategy orchestration. Advanced calibrated queues, impact and latency reconstruction remain deferred research.
 
 ## Validate adapters and measure performance
 

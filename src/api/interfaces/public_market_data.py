@@ -81,8 +81,10 @@ def market_metadata(exchange, raw, overrides=None):
 class PolymarketUSNormalizer:
     exchange = "POLYMARKET_US"
 
-    def __init__(self, identities):
+    def __init__(self, identities, *, max_book_levels=None, allowed_markets=None):
         self.identities = identities
+        self.max_book_levels = max_book_levels
+        self.allowed_markets = None if allowed_markets is None else frozenset(allowed_markets)
 
     def normalize(self, message, receipt, epoch=0):
         public_type = next((key for key in ("marketData", "marketDataLite", "trade") if key in message), None)
@@ -93,6 +95,12 @@ class PolymarketUSNormalizer:
         market_id = str(payload.get("marketId") or self.identities.get(slug, ""))
         if not market_id:
             raise ValueError("Unknown public market identity; preload subscriptions")
+        if self.allowed_markets is not None and market_id not in self.allowed_markets and slug not in self.allowed_markets:
+            return []
+        if public_type == 'marketData' and self.max_book_levels is not None:
+            if len(payload['bids']) + len(payload['offers']) > self.max_book_levels:
+                from .bounded_public import PublicCapacityError
+                raise PublicCapacityError('Public book level capacity exceeded')
         stamp, quality = timestamp(payload.get("transactTime") or payload.get("tradeTime"), receipt["received_at"])
         source_id = ""
         eligible = True
@@ -145,12 +153,15 @@ class PolymarketUSNormalizer:
 class KalshiNormalizer:
     exchange = "KALSHI"
 
-    def __init__(self):
+    def __init__(self, *, allowed_markets=None, max_book_levels=None, max_sequences=None):
         self.books = {}
         self.sequences = {}
         self.states = {}
         self.event_members = {}
         self.frozen_fees = set()
+        self.allowed_markets = None if allowed_markets is None else frozenset(allowed_markets)
+        self.max_book_levels = max_book_levels
+        self.max_sequences = max_sequences
 
     def reset(self):
         self.books.clear()
@@ -173,6 +184,10 @@ class KalshiNormalizer:
         market_id = payload.get("market_ticker")
         if not market_id:
             raise ValueError("Missing Kalshi ticker")
+        # Global lifecycle continuity is checked above, before filtering. Do not
+        # retain unrelated market state from the global subscription.
+        if self.allowed_markets is not None and market_id not in self.allowed_markets:
+            return []
         raw_time = payload.get("ts_ms", message.get("sending_ts_ms"))
         if raw_time is not None:
             raw_time = float(raw_time) / 1000
@@ -213,6 +228,10 @@ class KalshiNormalizer:
         # Global subscriptions must advance even for messages we ignore.
         if sequence is None:
             return
+        if (self.max_sequences is not None and subscription_id not in self.sequences
+                and len(self.sequences) >= self.max_sequences):
+            from .bounded_public import PublicCapacityError
+            raise PublicCapacityError('Public subscription sequence capacity exceeded')
         previous = self.sequences.get(subscription_id)
         if previous is not None and sequence != previous + 1:
             raise ValueError("Kalshi subscription sequence gap; reconnect/resnapshot required")
@@ -236,6 +255,9 @@ class KalshiNormalizer:
 
     def _update_book(self, kind, payload, market_id):
         if kind == "orderbook_snapshot":
+            if self.max_book_levels is not None and sum(len(payload[k]) for k in ('yes_dollars_fp', 'no_dollars_fp')) > self.max_book_levels:
+                from .bounded_public import PublicCapacityError
+                raise PublicCapacityError('Public book level capacity exceeded')
             self.books[market_id] = {
                 "yes": {amount(price): amount(quantity) for price, quantity in payload["yes_dollars_fp"]},
                 "no": {amount(price): amount(quantity) for price, quantity in payload["no_dollars_fp"]},
@@ -249,6 +271,10 @@ class KalshiNormalizer:
         if quantity < 0:
             raise ValueError("Negative depth after delta")
         if quantity:
+            if (price not in levels and self.max_book_levels is not None
+                    and sum(len(v) for v in self.books[market_id].values()) >= self.max_book_levels):
+                from .bounded_public import PublicCapacityError
+                raise PublicCapacityError('Cumulative public book level capacity exceeded')
             levels[price] = quantity
         else:
             levels.pop(price, None)

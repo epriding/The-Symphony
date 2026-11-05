@@ -2,9 +2,9 @@ __pycache__/
 *.py[cod]
 .env
 venv/
-notes.md
-SESSION_OBJECTIVE.md
-plans
-ChangesToOG.md
-1stPromtChats.md
-specs/
+
+# Private project workflow; public application documentation remains in docs/.
+/coding-workflow/
+
+# Personal owner notes.
+/notes.md

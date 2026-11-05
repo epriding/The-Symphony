@@ -42,12 +42,25 @@ class OrderCoordinator:
     def _rejected(self, reason: str) -> SubmissionResult:
         return SubmissionResult(RiskDecision(False, reason))
 
+    async def _archive(self):
+        try:
+            await self.state.compact_history(force=False)
+        except BaseException:
+            # A report delivery can catch its own error and retain the report
+            # for retry. Stop matching at the actual archive failure as well,
+            # before another scheduled arrival can create unrecordable fills.
+            if self.state.history_store and hasattr(self.paper_engine, 'history_failed'):
+                self.paper_engine.history_failed = True
+            raise
+
     async def submit(self, intent: OrderIntent) -> SubmissionResult:
         async with self.lock:
             portfolio_id = self.state.portfolio_for_strategy(intent.strategy)
             if portfolio_id is None:
                 return self._rejected("unknown_strategy_route")
             portfolio = self.state.portfolios[portfolio_id]
+            if self.state.history_store and await self.state.history_store.acontains(f"processed_intents:{portfolio_id}", intent.intent_id):
+                return self._rejected("duplicate_intent")
             if portfolio.paper and getattr(self.paper_engine, "asynchronous", False):
                 if not self.paper_engine.config or intent.exchange not in self.paper_engine.config.venues:
                     return self._rejected("missing_paper_venue_profile")
@@ -57,11 +70,13 @@ class OrderCoordinator:
             async with self.state.lock:
                 self.state._refresh_performance()
                 manager = self.state.risk_managers[portfolio_id]
-                decision = manager.evaluate(intent, self.state._snapshot())
+                decision = manager.evaluate(intent, self.state._risk_view())
                 if not decision.approved:
                     return SubmissionResult(decision)
                 self.state._reserve(decision)
-            return await self._send_reserved(decision)
+            result = await self._send_reserved(decision)
+            await self._archive()
+            return result
 
     async def submit_many(self, intents: list[OrderIntent]) -> list[SubmissionResult]:
         """Submit independent opportunities in list order, reserving between them."""
@@ -74,10 +89,15 @@ class OrderCoordinator:
         """Recheck an approval without counting its own reservation against it."""
         if self.state.clock() >= order.approved_until:
             return False
-        snapshot = self.state._snapshot()
+        # Risk reads synchronously under the state lock. Only these two fields
+        # need independent containers to exclude the approval being rechecked.
+        snapshot = self.state._risk_view()
         portfolio = snapshot.portfolios[order.portfolio_id]
-        portfolio.processed_intents.discard(order.intent_id)
-        portfolio.reservations.pop(order.intent_id, None)
+        portfolio = replace(portfolio,
+            processed_intents=portfolio.processed_intents - {order.intent_id},
+            reservations={key: value for key, value in portfolio.reservations.items()
+                          if key != order.intent_id})
+        snapshot = replace(snapshot, portfolios={**snapshot.portfolios, order.portfolio_id: portfolio})
         manager = self.state.risk_managers[order.portfolio_id]
         decision = manager.evaluate(
             order.intent, snapshot,
@@ -93,11 +113,12 @@ class OrderCoordinator:
                 return self._rejected("approval_no_longer_valid")
             portfolio = self.state.portfolios[order.portfolio_id]
             paper = portfolio.paper
-            snapshot = self.state._snapshot()
-            market = snapshot.markets[f"{order.exchange}:{order.market_id}"]
+            # Submission retains a market after releasing the lock; copy that
+            # market alone. The synchronous quote read does not retain its view.
+            market = deepcopy(self.state.markets[f"{order.exchange}:{order.market_id}"])
             manager = self.state.risk_managers[order.portfolio_id]
             quote = manager.quote(
-                snapshot, order.exchange, order.market_id, order.outcome, order.side,
+                self.state._risk_view(), order.exchange, order.market_id, order.outcome, order.side,
             )
 
         try:
@@ -143,6 +164,12 @@ class OrderCoordinator:
                 return self._rejected("batch_requires_one_portfolio")
             portfolio_id = next(iter(routes))
             portfolio = self.state.portfolios[portfolio_id]
+            if self.state.history_store:
+                if await self.state.history_store.acontains(f"processed_batches:{portfolio_id}", batch.batch_id):
+                    return self._rejected("duplicate_batch")
+                for leg in batch.legs:
+                    if await self.state.history_store.acontains(f"processed_intents:{portfolio_id}", leg.intent_id):
+                        return self._rejected("duplicate_intent")
             asynchronous = getattr(self.paper_engine, "asynchronous", False)
             supported = "paper_independent_legs" if asynchronous else "paper_all_or_none"
             if not portfolio.paper or batch.execution_policy != supported:
@@ -165,12 +192,13 @@ class OrderCoordinator:
                 if asynchronous:
                     # Local queue insertion cannot dispatch until locks release.
                     order_ids = self.paper_engine.enqueue_batch(batch, decision.orders, snapshot.markets)
-                    return SubmissionResult(decision, status="pending", submission_ids=order_ids)
-                records = await self._simulate_paper_batch(decision, snapshot, manager)
-                async with self.state.lock:
-                    applied = self._apply_paper_batch(decision, records, portfolio_id)
-                    self.state._refresh_performance()
-                return SubmissionResult(decision, deepcopy(applied), "submitted")
+                else:
+                    records = await self._simulate_paper_batch(decision, snapshot, manager)
+                    async with self.state.lock:
+                        applied = self._apply_paper_batch(decision, records, portfolio_id)
+                        self.state._refresh_performance()
+                    await self._archive()
+                    return SubmissionResult(decision, deepcopy(applied), "submitted")
             except BaseException as error:
                 async with self.state.lock:
                     for order in decision.orders:
@@ -179,6 +207,11 @@ class OrderCoordinator:
                     raise
                 logger.exception("Paper batch %s failed", batch.batch_id)
                 return SubmissionResult(decision, status="failed")
+            # Queue insertion succeeded. Failed archival must preserve these
+            # commitments and fail the driver; it cannot roll back queued orders
+            # by merely releasing their ledger reservations.
+            await self._archive()
+            return SubmissionResult(decision, status="pending", submission_ids=order_ids)
 
     async def _simulate_paper_batch(self, decision, snapshot, manager):
         records = []
@@ -208,17 +241,21 @@ class OrderCoordinator:
         self, order, *, fill_quantity=None, fill_price=None, execution_id=None,
     ):
         async with self.lock:
+            await self.state.prepare_history_update(order, execution_id=execution_id, fill_quantity=fill_quantity)
             async with self.state.lock:
                 result = self.state._apply_order_update(
                     order, fill_quantity=fill_quantity,
                     fill_price=fill_price, execution_id=execution_id,
                 )
                 self.state._refresh_performance()
-                return deepcopy(result)
+                result = deepcopy(result)
+            await self._archive()
+            return result
 
     async def apply_paper_update(self, record, approved):
         """Report delivery is outside engine and portfolio critical sections."""
         async with self.lock:
+            await self.state.prepare_history_update(record, approved)
             async with self.state.lock:
                 if not self.state.portfolios[approved.portfolio_id].paper:
                     raise ValueError("Paper reports cannot mutate a live account")
@@ -230,13 +267,35 @@ class OrderCoordinator:
                     raise ValueError("Paper response does not match approved order")
                 result = self.state._apply_order_update(record, approved=approved)
                 self.state._refresh_performance()
-                return deepcopy(result)
+                result = deepcopy(result)
+            await self._archive()
+            return result
 
     async def apply_paper_credit(self, credit):
         async with self.lock:
+            if self.state.history_store:
+                previous = await self.state.history_store.aget(f"cash_credits:{credit.portfolio_id}", credit.credit_id)
+                if previous is not None:
+                    from decimal import Decimal
+                    if Decimal(str(previous)) != Decimal(credit.amount):
+                        raise ValueError("Credit ID reused with a different amount")
+                    return
             async with self.state.lock:
                 self.state._apply_cash_credit(credit)
                 self.state._refresh_performance()
+            await self._archive()
+
+    async def apply_paper_settlement(self, event):
+        async with self.lock:
+            if self.state.history_store:
+                key = f"{event.exchange}:{event.market_id}"
+                for pid, portfolio in self.state.portfolios.items():
+                    if portfolio.paper and await self.state.history_store.acontains(f"settlements:{pid}", key):
+                        portfolio.settlements.add(key)
+            async with self.state.lock:
+                self.state._apply_settlement(event)
+                self.state._refresh_performance()
+            await self._archive()
 
     async def resolve_paper_submission(self, order_id):
         record = self.paper_engine.get_order(order_id)

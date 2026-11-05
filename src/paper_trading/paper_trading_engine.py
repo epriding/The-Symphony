@@ -1,7 +1,7 @@
 """Event-driven paper exchange; all portfolio mutations use the coordinator."""
 from collections import Counter, deque
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from decimal import Decimal
 import random
 
@@ -62,8 +62,11 @@ class FillCharge:
 class PaperTradingEngine:
     asynchronous = True
 
-    def __init__(self, config=None, clock=None):
+    def __init__(self, config=None, clock=None, history_store=None, limits=None):
         self.config = config
+        self.history_store = history_store
+        self.limits = limits or {}
+        self.history_failed = False
         self.clock = clock or RealClock()
         self.scheduler = Scheduler(self.clock, config.max_pending_events if config else 100_000)
         self.ids = IdGenerator(config.session_id if config else 'paper')
@@ -95,6 +98,10 @@ class PaperTradingEngine:
             self.audit_sink(row)
 
     def enqueue(self, approved, market):
+        if self.history_failed:
+            raise RuntimeError('history_unavailable')
+        if self.history_store and sum(o.phase != 'terminal' for o in self.orders.values()) >= self.limits.get('max_active_orders', 64):
+            raise BufferError('max_active_orders_exceeded')
         if self.config is None or approved.exchange not in self.config.venues:
             raise ValueError('missing_paper_venue_profile')
         order_id = self.ids()
@@ -298,6 +305,8 @@ class PaperTradingEngine:
             self.scheduler.schedule(approved.good_till_date, Scheduler.CANCEL, self._expire, order_id)
 
     def _preflight(self, order, allocations, role):
+        if self.history_failed:
+            raise RuntimeError('history_unavailable')
         fees = deepcopy(order.fees)
         schedule = self.config.venues[order.approved.exchange].fee_schedule(order.approved.market_id, self.clock())
         fee_model = FeeModel(schedule)
@@ -467,7 +476,16 @@ class PaperTradingEngine:
         return deepcopy(order.record) if order and order.phase in {'working', 'terminal'} else None
 
     async def on_public(self, envelope):
+        if self.history_failed:
+            raise RuntimeError('history_unavailable')
         event = envelope.event
+        if self.history_store and isinstance(event, TradeEvent):
+            identifier = event.trade_id or envelope.source_id
+            if identifier and await self.history_store.acontains('public_prints', (event.exchange, event.market_id, identifier)):
+                return
+        if self.history_store and isinstance(event, OrderBookSnapshotEvent):
+            if len(event.bids) + len(event.asks) > self.limits.get('max_event_bytes', 262144) // 64:
+                raise BufferError('book_level_capacity_exceeded')
         self.log('public_data', exchange=event.exchange, ingest_index=envelope.ingest_index,
                  ingestion_delay=envelope.available_at-envelope.received_at,
                  timestamp_quality=envelope.timestamp_quality, depth_coverage=envelope.depth_coverage)
@@ -482,6 +500,8 @@ class PaperTradingEngine:
                     if order.approved.exchange == event.exchange:
                         self._finish(order, OrderStatus.CANCELED, 'venue_cancel_on_disconnect')
             return
+        if self.history_store and key not in self.books and len(self.books) >= self.limits.get('max_markets', 8):
+            raise BufferError('max_markets_exceeded')
         pool = self.books.setdefault(key, BookPool())
         if isinstance(event, OrderBookSnapshotEvent):
             market = self.coordinator.state.markets.get(f'{event.exchange}:{event.market_id}')
@@ -489,6 +509,8 @@ class PaperTradingEngine:
                 pool.invalidate('unknown_market_rules')
                 return
             reset = pool.snapshot(event, envelope, market)
+            if self.history_store:
+                pool.changed_at = {k: v for k, v in pool.changed_at.items() if k[1] in pool.observed[k[0]]}
             if reset is None:
                 self.log('duplicate_book', exchange=event.exchange, source_id=envelope.source_id)
                 return
@@ -501,6 +523,7 @@ class PaperTradingEngine:
                         self.log('queue_reset', exchange=event.exchange, market_id=event.market_id)
                     else:
                         queue.observe(visible)
+            self._compact_queues()
         elif isinstance(event, LiteOrderBookSnapshotEvent):
             for side, quote in (('SELL', event.best_bid), ('BUY', event.best_ask)):
                 if quote is not None and pool.quote(side, event.outcome) != float(quote):
@@ -566,6 +589,8 @@ class PaperTradingEngine:
                 self.log('participation_alert', exchange=event.exchange, market_id=event.market_id,
                          basis='eligible_public_trade', quantity=str(filled),
                          reference_quantity=str(event.quantity), ratio=str(filled / dec(event.quantity)))
+        if self.history_store and len(pool.quarantined) >= self.limits.get('max_event_bytes', 262144) // 64 and (passive_side, price) not in pool.quarantined:
+            raise BufferError('quarantine_capacity_exceeded')
         pool.quarantined.add((passive_side, price))
 
     def register_group(self, batch, order_ids):
@@ -599,3 +624,136 @@ class PaperTradingEngine:
                 if self.orders[next_id].phase == 'held':
                     self.orders[next_id].phase = 'pending'
                     self.scheduler.schedule(self.clock(), Scheduler.ARRIVAL, self._dispatch, next_id)
+
+    def _timing(self, order):
+        return dict(kind='order_timing', order_id=order.record.order_id,
+            portfolio_id=order.approved.portfolio_id, exchange=order.approved.exchange,
+            strategy=order.approved.strategy, market_id=order.approved.market_id,
+            status=order.record.status.value, time_in_force=order.approved.tif.value,
+            size=str(order.approved.size), filled_quantity=str(order.filled),
+            submitted_at=order.submitted_at, dispatched_at=order.dispatched_at,
+            arrived_at=order.arrived_at, first_fill_at=order.first_fill_at,
+            last_fill_at=order.last_fill_at, terminal_at=order.terminal_at,
+            cancel_requested_at=order.cancel_requested_at, last_report_at=order.last_report_at,
+            revision=order.record.revision)
+
+    def _group_detail(self, batch_id, group):
+        seconds = group['unmatched_seconds']
+        if group['unmatched_since'] is not None:
+            seconds += self.clock() - group['unmatched_since']
+        return dict(kind='group', batch_id=batch_id, failed=group['failed'],
+            unmatched_seconds=seconds, legs=[dict(order_id=oid,
+                exchange=self.orders[oid].approved.exchange,
+                filled_quantity=str(self.orders[oid].filled),
+                remaining_quantity=str(self.orders[oid].remaining),
+                status=self.orders[oid].record.status.value) for oid in group['ids']])
+
+    async def compact(self, *, force=False):
+        """Persist bounded batches, then retire only resolved working evidence."""
+        if self.history_store is None:
+            return
+        async with self.coordinator.lock:
+            try:
+                await self.coordinator.state.compact_history(force=force)
+                await self._compact_engine(force=force)
+            except BaseException:
+                self.history_failed = True
+                raise
+
+    async def _compact_engine(self, *, force=False):
+        store = self.history_store
+        hot = self.limits.get('max_hot_history_records', 16)
+        batch = min(hot, self.limits.get('max_archive_cache_records', 8))
+        if (not force and len(self.executions) < batch and len(self.seen_trades) < batch
+                and sum(order.phase == 'terminal' for order in self.orders.values()) < hot + batch):
+            # All uncommitted executions/IDs/orders remain authoritative here.
+            # A finite batch reduces sync latency; retirement happens only below
+            # after its real SQLite commit and detail flush have succeeded.
+            self._compact_queues()
+            return
+        # Only no-op timers are removed. Reports/credits remain authoritative.
+        def obsolete(event):
+            if getattr(event.callback, '__self__', None) is not self or not event.args:
+                return False
+            name = event.callback.__name__
+            if name == '_group_deadline':
+                group = self.groups.get(event.args[0])
+                return group is None or all(self.orders[oid].phase == 'terminal' for oid in group['ids'])
+            if name in {'_expire', '_dispatch', '_dispatch_reserved', '_arrive'}:
+                order = self.orders.get(event.args[0])
+                return order is None or order.phase == 'terminal'
+            return False
+        self.scheduler.discard(obsolete)
+        pending = {event.args[0].order_id for event in self.scheduler.events
+                   if getattr(event.callback, '__self__', None) is self
+                   and event.callback.__name__ == '_deliver'}
+        pending.update(event.args[0] for event in self.scheduler.events
+                       if getattr(event.callback, '__self__', None) is self
+                       and event.callback.__name__ == '_cancel_arrive')
+        pending.update(record.order_id for record, _ in self.outbox)
+        resolved = []
+        for oid, order in self.orders.items():
+            if order.phase != 'terminal' or oid in pending:
+                continue
+            portfolio = self.coordinator.state.portfolios[order.approved.portfolio_id]
+            observed = portfolio.order_history.get(f'{order.approved.exchange}:{oid}')
+            if observed is None:
+                observed = await store.aget(f'orders:{order.approved.portfolio_id}', f'{order.approved.exchange}:{oid}')
+            if observed is not None and observed.revision >= order.record.revision:
+                resolved.append(oid)
+        groups = [(bid, group) for bid, group in self.groups.items() if all(oid in resolved for oid in group['ids'])]
+        fills = list(self.executions)
+        prints = list(self.seen_trades)
+        timing = [(oid, self._timing(self.orders[oid])) for oid in resolved]
+        order_rows = [(oid, self._timing(order)) for oid, order in self.orders.items()]
+        group_rows = [(bid, self._group_detail(bid, group)) for bid, group in groups]
+        def commit(conn):
+            for oid, row in order_rows:
+                store._put(conn, 'engine_orders', oid, row, True)
+            for execution in fills:
+                if store._put(conn, 'execution_ids', execution.execution_id, True):
+                    order = self.orders[execution.order_id]
+                    row = dict(kind='execution', portfolio_id=order.approved.portfolio_id, strategy=order.approved.strategy, **asdict(execution))
+                    store._append(conn, 'executions', row)
+                    for horizon in self.config.markout_horizons:
+                        identity = f'{execution.execution_id}:{horizon}'
+                        if store._get(conn, 'markout_ids', identity, False):
+                            continue
+                        value = store._encode(dict(execution=execution, horizon=horizon))
+                        conn.execute('INSERT OR IGNORE INTO pending_marks VALUES (?,?,?,?,?)', (identity, execution.timestamp+horizon, value, execution.exchange, execution.market_id))
+            for token in prints:
+                store._put(conn, 'public_prints', token, True)
+            for oid, row in timing:
+                if store._put(conn, 'timing_ids', oid, True):
+                    store._append(conn, 'order_timings', row)
+            for bid, row in group_rows:
+                if store._put(conn, 'group_ids', bid, True):
+                    store._append(conn, 'groups', row)
+            conn.commit()
+        await store.run(commit)
+        del self.executions[:len(fills)]
+        self.seen_trades.clear()
+        for bid, _ in groups:
+            self.groups.pop(bid)
+        protected = {oid for group in self.groups.values() for oid in group['ids']}
+        evict = [oid for oid in resolved if oid not in protected]
+        for oid in evict[:-hot]:
+            self.orders.pop(oid)
+        self._compact_queues()
+
+    def _compact_queues(self):
+        if self.history_store is None:
+            return
+        for key, queue in list(self.queues.items()):
+            compacted = []
+            for oid, amount in queue.segments:
+                if oid is not None and (oid not in self.orders or self.orders[oid].phase != 'working'):
+                    continue
+                if oid is None and compacted and compacted[-1][0] is None:
+                    compacted[-1][1] += amount
+                else:
+                    compacted.append([oid, amount])
+            if any(oid is not None for oid, _ in compacted):
+                queue.segments = compacted
+            else:
+                self.queues.pop(key)

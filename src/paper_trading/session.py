@@ -1,6 +1,7 @@
 """Paper-only session composition, shared by live feeds and offline replay."""
 from copy import deepcopy
 from dataclasses import replace
+import heapq
 import json
 import random
 from pathlib import Path
@@ -14,32 +15,51 @@ from .scheduler import Scheduler
 from ..market_decisions.order_coordinator import OrderCoordinator
 from ..utilities.classes import (
     OrderBook, OrderBookSnapshotEvent, LiteOrderBookSnapshotEvent, OrderIntent, OrderStatus,
+    OrderRecord,
 )
 from ..utilities.market_events import PublicConnectionEvent, MarketStatusEvent, SettlementEvent
 from ..utilities.trading_state import TradingState
 
 
 class PaperSession:
-    def __init__(self, config, clock, capture_directory=None, audit_directory=None):
+    def __init__(self, config, clock, capture_directory=None, audit_directory=None,
+                 *, history_store=None, limits=None, runtime_config=None):
         if config.paper_execution is None:
             raise ValueError("Explicit paper execution configuration is required")
         if any(value == "LIVE" for value in config.strategy_portfolios.values()) or any(
                 not paper for paper in config.paper_trading.values()):
             raise ValueError("Paper sessions cannot route strategies to LIVE")
         self.clock = clock
-        self.state = TradingState(config, clock)
-        self.engine = PaperTradingEngine(config.paper_execution, clock)
+        options = dict(history_store=history_store, limits=limits) if history_store else {}
+        self.state = TradingState(config, clock, **options)
+        self.engine = PaperTradingEngine(config.paper_execution, clock, **options)
         self.coordinator = OrderCoordinator(self.state, paper_engine=self.engine)
-        self.reporter = Reporter(self.engine)
-        self.recorder = Recorder(capture_directory, config, clock()) if capture_directory else None
+        if history_store:
+            from .reporting import BoundedReporter
+            self.reporter = BoundedReporter(self.engine, history_store)
+        else:
+            self.reporter = Reporter(self.engine)
+        self.recorder = None
         self.audit_file = None
         audit_directory = audit_directory or capture_directory
-        if audit_directory:
-            Path(audit_directory).mkdir(parents=True, exist_ok=True)
-            self.engine.audit_path = Path(audit_directory) / "audit.jsonl"
-            self.audit_file = self.engine.audit_path.open("x")
-            self.engine.audit_sink = self._write_audit
+        try:
+            if capture_directory:
+                self.recorder = Recorder(capture_directory, config, clock(), runtime_config=runtime_config)
+            if audit_directory:
+                Path(audit_directory).mkdir(parents=True, exist_ok=True)
+                self.engine.audit_path = Path(audit_directory) / "audit.jsonl"
+                self.audit_file = self.engine.audit_path.open("x")
+                self.engine.audit_sink = self._write_audit
+        except BaseException as error:
+            if self.recorder:
+                try:
+                    self.recorder.close(clock(), finalized=False)
+                except BaseException as cleanup_error:
+                    error.add_note(f'partial capture cleanup: {type(cleanup_error).__name__}')
+            raise
         self.closed = False
+        self._finished_summary = None
+        self._market_keys = set() if history_store else None
         self.data_end = clock()
         self.strategy = None
         self.settled_markets = set()
@@ -48,9 +68,36 @@ class PaperSession:
         self._public_event_index = 0
         self._strategy_event = None
         self._replay_decisions = None
+        self.after_public = None
 
     def _write_audit(self, row):
         self.audit_file.write(json.dumps(row, default=str, sort_keys=True) + "\n")
+
+    def _admit_market(self, exchange, market_id):
+        """Share one finite market budget across every bounded session input."""
+        if self._market_keys is None:
+            return
+        identity = (exchange, market_id)
+        if identity in self._market_keys:
+            return
+        if len(self._market_keys) >= self.engine.limits.get('max_markets', 8):
+            raise BufferError('max_markets_exceeded')
+        self._market_keys.add(identity)
+
+    def _admit_public_market(self, event):
+        if self._market_keys is None:
+            return
+        if isinstance(event, PublicConnectionEvent) and not event.market_id:
+            return  # A venue-wide connection message has no market identity.
+        if isinstance(event, LiteOrderBookSnapshotEvent) and event.outcome not in ('YES', 'NO'):
+            raise ValueError('Unknown public quote outcome')
+        self._admit_market(event.exchange, getattr(event, 'market_id', ''))
+
+    async def _observe_reporter(self):
+        if hasattr(self.reporter, 'observe_async'):
+            await self.reporter.observe_async()
+        else:
+            self.reporter.observe()
 
     def new_intent(self, **values):
         """Strategy helper using session time and reproducible intent IDs."""
@@ -75,12 +122,14 @@ class PaperSession:
         precision_rules = (market.tick_size, market.quantity_step, market.min_quantity)
         if any(value is None or dec(value) <= 0 for value in precision_rules):
             raise ValueError("Explicit price and quantity rules required")
+        self._admit_market(market.exchange, market.market_id)
         await self.state.update_trading_state(market)
         self.record("market", market)
 
     def publish(self, envelope):
         if self.closed:
             raise RuntimeError("Session is closed")
+        self._admit_public_market(envelope.event)
         available = max(envelope.available_at, self.clock())
         envelope = replace(deepcopy(envelope), available_at=available)
         self.engine.scheduler.schedule(available, Scheduler.PUBLIC, self._apply_public, envelope)
@@ -88,11 +137,13 @@ class PaperSession:
 
     async def apply_public_immediately(self, envelope):
         """Apply a shutdown/recovery input without running other queued work."""
+        self._admit_public_market(envelope.event)
         self.record("public_immediate", envelope)
         await self._apply_public(envelope)
 
     async def _apply_public(self, envelope):
         event = envelope.event
+        self._admit_public_market(event)
         self._public_event_index += 1
         self.data_end = max(self.data_end, self.clock())
         if isinstance(event, SettlementEvent):
@@ -110,7 +161,9 @@ class PaperSession:
         async with self.state.lock:
             self._update_public_state(envelope)
             self.state._refresh_performance()
-        self.reporter.observe()
+        await self._observe_reporter()
+        if self.after_public:
+            await self.after_public(envelope)
         if (self.strategy or self._replay_decisions) and not isinstance(event, PublicConnectionEvent):
             previous_event = self._strategy_event
             self._strategy_event = self._public_event_index
@@ -127,6 +180,7 @@ class PaperSession:
     def _update_public_state(self, envelope):
         """Publish strategy-visible data together; caller holds the state lock."""
         event = envelope.event
+        self._admit_public_market(event)
         if isinstance(event, PublicConnectionEvent):
             for key in list(self.state.orderbooks):
                 same_exchange = key.startswith(event.exchange + ":")
@@ -172,6 +226,7 @@ class PaperSession:
             market.active = pool.state in {"OPEN", "MARKET_STATE_OPEN", "active", "open"}
 
     async def _handle_settlement(self, event):
+        self._admit_market(event.exchange, event.market_id)
         try:
             if (not event.settlement_id or set(event.payouts) != {"YES", "NO"}
                     or any(not 0 <= dec(value) <= 1 for value in event.payouts.values())):
@@ -203,10 +258,14 @@ class PaperSession:
                                        self._settle_account, event)
 
     async def _settle_account(self, event):
+        self._admit_market(event.exchange, event.market_id)
         await self.engine.retry_reports()
-        async with self.state.lock:
-            self.state._apply_settlement(event)
-            self.state._refresh_performance()
+        if hasattr(self.coordinator, 'apply_paper_settlement'):
+            await self.coordinator.apply_paper_settlement(event)
+        else:
+            async with self.state.lock:
+                self.state._apply_settlement(event)
+                self.state._refresh_performance()
         self.engine.log("settlement_accounted", exchange=event.exchange, market_id=event.market_id,
                         settlement_id=event.settlement_id)
 
@@ -220,6 +279,20 @@ class PaperSession:
     async def submit_batch(self, batch):
         self.record("batch", batch)
         return await self.coordinator.submit_batch(batch)
+
+    async def _apply_cumulative_update(self, record):
+        """Record a diagnostic private cumulative report before accounting it.
+
+        The offline workload driver uses the existing coordinator correction
+        path; registered runtime strategies receive no report-injection ability.
+        """
+        if type(record) is not OrderRecord:
+            raise ValueError('Cumulative update requires a whitelisted OrderRecord')
+        if record.portfolio_id != 'PAPER':
+            raise ValueError('Cumulative update requires the paper portfolio')
+        self._admit_market(record.exchange, record.market_id)
+        self.record('order_update', record)
+        return await self.coordinator.apply_order_update(record)
 
     async def cancel(self, order_id, exchange, portfolio_id="PAPER"):
         self.record("cancel", dict(order_id=order_id, exchange=exchange, portfolio_id=portfolio_id))
@@ -242,32 +315,53 @@ class PaperSession:
             raise RuntimeError("Session is closed")
         self.record("advance", dict(until=until, inclusive=inclusive))
         await self.engine.scheduler.advance(until, inclusive)
-        self.reporter.observe()
+        await self._observe_reporter()
 
-    async def finish(self, output_directory=None):
-        if self.closed:
-            return self.reporter.summary(self.state)
+    async def finish(self, output_directory=None, *, finalize_capture=True):
+        if self._finished_summary is not None:
+            return self._finished_summary
         ended_at = self.clock()
-        if self.recorder:
-            self.recorder.close(ended_at)
         # Only private outcomes already determined by input data may be flushed.
         # Do not execute later arrivals/expiry/trades beyond the capture.
-        for report in self.engine.scheduler.take_events(Scheduler.REPORT):
-            if isinstance(self.clock, VirtualClock):
-                self.clock.advance(max(self.clock(), report.timestamp_ns / 1_000_000_000))
-            result = report.callback(*report.args)
-            if hasattr(result, "__await__"):
-                await result
+        reports = self.engine.scheduler.take_events(Scheduler.REPORT)
+        for index, report in enumerate(reports):
+            try:
+                if isinstance(self.clock, VirtualClock):
+                    self.clock.advance(max(self.clock(), report.timestamp_ns / 1_000_000_000))
+                result = report.callback(*report.args)
+                if hasattr(result, "__await__"):
+                    await result
+            except BaseException:
+                # The failing report may have an ambiguous side effect. Retain
+                # it and every untouched determined outcome for an idempotent
+                # retry instead of losing them with this local drain batch.
+                for pending in reports[index:]:
+                    heapq.heappush(self.engine.scheduler.events, pending)
+                raise
         await self.engine.retry_reports()
-        self.reporter.observe()
+        await self._observe_reporter()
+        if hasattr(self.engine, 'compact'):
+            await self.engine.compact()
+        if hasattr(self.reporter, 'observe_async'):
+            await self.reporter.observe_async()
+        if self.recorder:
+            self.recorder.close(ended_at, finalized=finalize_capture)
         self.closed = True
         if self.audit_file:
             self.audit_file.flush()
             self.audit_file.close()
             self.engine.audit_sink = None
         if output_directory:
-            return self.reporter.write(output_directory, self.state)
-        return self.reporter.summary(self.state)
+            if hasattr(self.reporter, 'write_async'):
+                summary = await self.reporter.write_async(output_directory, self.state)
+            else:
+                summary = self.reporter.write(output_directory, self.state)
+        elif hasattr(self.reporter, 'summary_async'):
+            summary = await self.reporter.summary_async(self.state)
+        else:
+            summary = self.reporter.summary(self.state)
+        self._finished_summary = summary
+        return summary
 
 
 if __name__ == "__main__":

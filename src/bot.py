@@ -1,17 +1,13 @@
-import os
-from pathlib import Path
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+"""Public paper-bot facade; imports never start transport or private accounts."""
+from .paper_trading.runtime import BotRunner
+from .paper_trading.runtime_config import load_bot_config
 
 
-def run_bot() -> None:
-    dry_run = os.getenv("DRY_RUN", "true").lower() == "true"
-    api_url = os.getenv("POLYMARKET_API_URL", "https://example.com")
-    log_level = os.getenv("LOG_LEVEL", "INFO")
+async def replay_bot(capture_directory, output_directory):
+    from .paper_trading.replay import replay_runtime
+    return await replay_runtime(capture_directory, output_directory)
 
-    print("Polymarket bot scaffold started")
-    print(f"dry_run={dry_run}")
-    print(f"api_url={api_url}")
-    print(f"log_level={log_level}")
-    print("This is a placeholder bot loop. Replace the logic with your own strategy.")
+
+def run_bot():
+    from main import main
+    return main()

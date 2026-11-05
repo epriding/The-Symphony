@@ -8,7 +8,6 @@ from websockets.exceptions import WebSocketException
 
 from .base_interfaces import MarketDataClient
 from .public_market_data import PolymarketUSNormalizer, market_metadata, amount
-from ..polymarket.polyus_rest_api import PolymarketAPI
 from ...utilities.classes import OrderBook
 from ...utilities.market_events import (PublicEventEnvelope, PublicConnectionEvent,
                                         ReceiptSequencer, SettlementEvent)
@@ -18,22 +17,40 @@ class PolymarketUSMarketData(MarketDataClient):
     exchange = "POLYMARKET_US"
 
     def __init__(self, markets, key_id=None, secret_key=None, *, overrides=None,
-                 sequencer=None, queue_limit=10000, read_interval=1.0):
+                 sequencer=None, queue_limit=10000, read_interval=1.0,
+                 max_event_bytes=None, max_markets=None, max_book_levels=None):
         if queue_limit < 1 or read_interval <= 0:
             raise ValueError("Positive public queue/read limits required")
         self.markets = list(markets)
+        if max_markets is not None and len(self.markets) > max_markets:
+            raise ValueError('Public market capacity exceeded')
         self.key_id = key_id
         self.secret_key = secret_key
-        self.api = PolymarketAPI(key_id, secret_key)
+        self.max_event_bytes = max_event_bytes
+        if max_event_bytes is not None:
+            from .bounded_public import BoundedPolymarketPublicAPI
+            self.api = BoundedPolymarketPublicAPI(key_id, secret_key, max_event_bytes=max_event_bytes)
+        else:
+            from ..polymarket.polyus_rest_api import PolymarketAPI
+            self.api = PolymarketAPI(key_id, secret_key)
         self.overrides = overrides or {}
         self.identities = {}
         self.sequencer = sequencer or ReceiptSequencer()
-        self.normalizer = PolymarketUSNormalizer(self.identities)
+        self.normalizer = PolymarketUSNormalizer(self.identities,
+            max_book_levels=max_book_levels,
+            allowed_markets=self.markets if max_event_bytes is not None else None)
         self.queue_limit = queue_limit
         self.read_interval = read_interval
         self.read_lock = asyncio.Lock()
         self.last_read = 0.0
         self.epoch = 0
+        self._close_task = None
+
+    async def aclose(self):
+        """Close owned HTTP transport once, including pre-stream startup failure."""
+        if self._close_task is None:
+            self._close_task = asyncio.create_task(self.api.client.close())
+        await asyncio.shield(self._close_task)
 
     async def _read(self, method, **kwargs):
         async with self.read_lock:
@@ -44,6 +61,8 @@ class PolymarketUSMarketData(MarketDataClient):
         return await method(**kwargs)
 
     async def get_market(self, slug):
+        if self.max_event_bytes is not None and slug not in self.markets:
+            raise ValueError('Market is outside the fixed public subscriptions')
         raw = await self._read(self.api.get_market_by_slug, slug=slug)
         raw = raw.get("market", raw)
         market = market_metadata(self.exchange, raw, self.overrides.get(slug))
@@ -51,6 +70,8 @@ class PolymarketUSMarketData(MarketDataClient):
         return market
 
     async def get_markets(self, active=True, limit=200, offset=None):
+        if self.max_event_bytes is not None:
+            return [await self.get_market(slug) for slug in self.markets]
         response = await self._read(self.api.get_markets, active=active, limit=limit, offset=offset or 0)
         result = []
         for raw in response["markets"]:
@@ -104,18 +125,27 @@ class PolymarketUSMarketData(MarketDataClient):
             if slug not in self.identities:
                 await self.get_market(slug)
         attempts = 0
-        sdk = PolymarketUS(key_id=self.key_id, secret_key=self.secret_key)
+        sdk = PolymarketUS(key_id=self.key_id, secret_key=self.secret_key) if self.max_event_bytes is None else None
         try:
             while True:
                 self.epoch += 1
                 raw_queue = asyncio.Queue(maxsize=self.queue_limit)
                 recovery = asyncio.Event()
-                websocket = sdk.ws.markets()
+                if self.max_event_bytes is None:
+                    websocket = sdk.ws.markets()
+                else:
+                    from .bounded_public import BoundedMarketsWebSocket
+                    websocket = BoundedMarketsWebSocket(key_id=self.key_id, secret_key=self.secret_key,
+                        max_event_bytes=self.max_event_bytes, max_queue=self.queue_limit)
+                critical = []
                 def callback(message):
                     receipt = self.sequencer.receipt()
                     try:
                         raw_queue.put_nowait((message, receipt))
                     except asyncio.QueueFull:
+                        if self.max_event_bytes is not None and not critical:
+                            from .bounded_public import PublicCapacityError
+                            critical.append(PublicCapacityError('Public decoded queue capacity exceeded'))
                         recovery.set()
                 event_fields = (
                     ("market_data", "marketData"),
@@ -128,7 +158,12 @@ class PolymarketUSMarketData(MarketDataClient):
                         callback(message if field in message else {field: message})
                     websocket.on(name, on_data)
                 websocket.on("close", lambda *args: recovery.set())
-                websocket.on("error", lambda *args: recovery.set())
+                def on_error(error=None, *args):
+                    from .bounded_public import PublicCapacityError
+                    if isinstance(error, PublicCapacityError) and not critical:
+                        critical.append(error)
+                    recovery.set()
+                websocket.on("error", on_error)
                 try:
                     await websocket.connect()
                     for slug in self.markets:
@@ -143,6 +178,8 @@ class PolymarketUSMarketData(MarketDataClient):
                             continue
                         for envelope in self.normalizer.normalize(message, receipt, self.epoch):
                             yield replace(envelope, available_at=max(time.time(), envelope.received_at))
+                    if critical:
+                        raise critical[0]
                     yield self.connection(False, "public_queue_overflow_or_connection_loss")
                 except (OSError, ValueError, KeyError, ArithmeticError, asyncio.TimeoutError, WebSocketException) as error:
                     yield self.connection(False, f"public_feed_recovery:{type(error).__name__}")
@@ -151,4 +188,4 @@ class PolymarketUSMarketData(MarketDataClient):
                 attempts += 1
                 await asyncio.sleep(min(2**min(attempts, 5), 30))
         finally:
-            await self.api.client.close()
+            await self.aclose()

@@ -69,6 +69,13 @@ class Scheduler:
         heapq.heapify(self.events)
         return selected
 
+    def discard(self, predicate):
+        """Discard only callbacks whose owner has proved their effect obsolete."""
+        original = len(self.events)
+        self.events = [event for event in self.events if not predicate(event)]
+        heapq.heapify(self.events)
+        return original - len(self.events)
+
     async def advance(self, until, inclusive=True):
         end = nanoseconds(until)
         while self.events:
