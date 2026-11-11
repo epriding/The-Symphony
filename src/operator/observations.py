@@ -34,7 +34,7 @@ def validate_projection(config):
     if any(route != 'PAPER' for route in config['strategy_portfolios'].values()):
         raise ValueError('Control projections support PAPER routes only')
     limits=config['runtime']['limits']
-    estimate=(retained_bytes(config)
+    estimate=(2*retained_bytes(config)
         + limits['max_active_orders']*4096
         + limits['max_positions']*limits['max_strategies']*2048
         + limits['max_strategies']*4096 + limits['max_markets']*2048
@@ -65,6 +65,10 @@ class Observations:
         self.config = config
         self.fills = deque(maxlen=256)
         self.fill_sequence = 0
+        self.events=deque(maxlen=256)
+        self.event_sequence=0
+        self.findings=deque(maxlen=128)
+        self.finding_sequence=0
         self.market_time = None
         self.snapshot_at = None
         self.last_refresh = -float('inf')
@@ -93,6 +97,20 @@ class Observations:
         return summaries
 
     def observe(self, runner, kind, payload):
+        if kind in ('control','execution'):
+            self.event_sequence+=1
+            action=payload.get('action',payload.get('event','activity'))
+            name=payload.get('strategy')
+            order=runner._session.engine.orders.get(payload.get('order_id'))
+            if name is None and order is not None:
+                name=order.approved.strategy
+            name=name if name in self.strategies else None
+            self.events.append(dict(id=f'event-{self.event_sequence:012d}',
+                sequence=self.event_sequence,action=safe_text(action,256),strategy=name,
+                attribution='strategy' if name else 'system',
+                severity='error' if action=='disabled' or payload.get('failed') else 'info',
+                message=safe_text(payload.get('reason') or action),
+                timestamp=payload['timestamp'] if 'timestamp' in payload else runner.clock()))
         if kind == 'control':
             name = payload.get('strategy')
             if name in self.strategies:
@@ -157,7 +175,8 @@ class Observations:
         for summary in summaries.values():
             summary['operator_state']=runner.operator_state
         prospective=dict(config=self.config,strategies=summaries,orders=orders,
-            positions=positions,fills=self.fills,activities=self.activities,errors=self.errors)
+            positions=positions,fills=self.fills,events=self.events,findings=self.findings,
+            activities=self.activities,errors=self.errors)
         if retained_bytes(prospective)>MODEL_LIMIT:
             raise ProtocolError('limit_exceeded','Current projection exceeds memory budget')
         self.strategies,self.orders,self.positions=summaries,orders,positions
@@ -169,7 +188,34 @@ class Observations:
     def storage_bytes(self):
         return retained_bytes(dict(config=self.config,strategies=self.strategies,
             orders=self.orders,positions=self.positions,fills=self.fills,
+            events=self.events,findings=self.findings,
             venues=self.venues,activities=self.activities,errors=self.errors))
+
+    @staticmethod
+    def window(rows,total):
+        return (rows[0]['sequence'] if rows else None,rows[-1]['sequence'] if rows else None,total)
+
+    @classmethod
+    def window_info(cls,rows,total):
+        first,last,total=cls.window(rows,total)
+        return dict(retained_start=first,retained_end=last,total_observed=total,
+            evicted=total>0 and (first is None or first>1))
+
+    def finding(self,params,request_id):
+        author=safe_text(params['author'],128).strip()
+        message=safe_text(params['message']).strip()
+        if not author or not message:
+            raise ProtocolError('invalid_request','Finding author and message must contain plain text')
+        sequence=self.finding_sequence+1
+        return dict(id=f'finding-{sequence:012d}',sequence=sequence,
+            timestamp=time.time(),strategy=params.get('name'),author=author,
+            severity=params['severity'],message=message,
+            evidence=safe_text(params['evidence']) if 'evidence' in params else None,
+            source_request_id=safe_text(request_id,128))
+
+    def accept_finding(self,row):
+        self.finding_sequence=row['sequence']
+        self.findings.append(row)
 
     def _encode_cursor(self,tag,last):
         raw=json.dumps(dict(tag=tag,after=last),separators=(',',':')).encode()
@@ -208,17 +254,18 @@ class Observations:
             if more else None,has_more=more,scope=scope)
         if window is not None:
             first,last,total=window
-            result.update(retained_start=first,retained_end=last,evicted=total>0 and (first or 1)>1)
+            result.update(retained_start=first,retained_end=last,evicted=total>0 and (first is None or first>1))
         return result
 
     def read(self,name,collection=None,**paging):
         if collection is None:
             return self.strategies[name]
-        rows={'orders':self.orders,'positions':self.positions,'fills':self.fills,'events':[]}[collection]
+        rows={'orders':self.orders,'positions':self.positions,'fills':self.fills,'events':self.events}[collection]
         window=None
         if collection=='fills':
-            window=(self.fills[0]['sequence'] if self.fills else None,
-                    self.fills[-1]['sequence'] if self.fills else None,self.fill_sequence)
+            window=self.window(self.fills,self.fill_sequence)
+        if collection=='events':
+            window=self.window(self.events,self.event_sequence)
         return self.page([row for row in rows if row['strategy']==name],
             scope='recent' if collection in ('fills','events') else 'active',
             tag=['strategy',name,collection],window=window,**paging)

@@ -7,6 +7,8 @@ MAX_RESPONSE = 1024 * 1024
 DEADLINE = 5.0
 OPERATIONS = {op: set() for op in ('overview', 'start', 'pause', 'resume', 'stop')}
 OPERATIONS.update(strategies={'limit','cursor'}, strategy={'name','collection','limit','cursor'})
+OPERATIONS.update(findings={'name','limit','cursor'},
+    publish_finding={'name','author','severity','message','evidence'})
 
 
 class ProtocolError(ValueError):
@@ -86,6 +88,15 @@ def decode_request(frame):
             invalid('Unknown strategy collection')
         if not params.get('collection') and set(params)&{'limit','cursor'}:
             invalid('Paging requires a strategy collection')
+    if op in ('findings','publish_finding') and 'name' in params:
+        bounded_text(params['name'],256)
+    if op == 'publish_finding':
+        bounded_text(params.get('author'),128)
+        bounded_text(params.get('message'),2048)
+        if not isinstance(params.get('severity'),str) or params['severity'] not in ('info','warning','error'):
+            invalid('Unknown finding severity')
+        if 'evidence' in params:
+            bounded_text(params['evidence'],2048)
     return value
 
 

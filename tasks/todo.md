@@ -1,6 +1,6 @@
 # Runtime-access tasks
 
-Plan: [plan.md](plan.md). Status: Approved; RA-06 in progress.
+Plan: [plan.md](plan.md). Status: Approved; RA-07 in progress.
 Every behavior task uses RED -> GREEN -> full regression -> compile -> review
 -> commit. Also run fresh offline smoke/replay after runner, capture or CLI
 changes. Preserve concrete test results in `.audit/` and log decisions in
@@ -110,7 +110,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ## RA-06: Share bounded runtime events and diagnostic findings
 
-- [ ] Expose recent events/fills and accept session-targeted plain-text findings.
+- [x] Expose recent events/fills and accept session-targeted plain-text findings.
 - Acceptance: Bounded rings expose eviction metadata; findings have correct
   attribution and append-only artifact evidence. Artifact write failure rejects
   publication; redaction/terminal sanitization and text limits are tested.

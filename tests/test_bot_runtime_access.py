@@ -1,6 +1,7 @@
 """Shared observations must describe actual paper execution, not cached guesses."""
 import asyncio
 from copy import deepcopy
+import json
 
 import pytest
 
@@ -9,6 +10,96 @@ from src.paper_trading.clock import VirtualClock
 from src.utilities.classes import Side
 from bot_v1_support import START, VENUES, ControlledFeed, eventually, strategy_config, valid_config
 from test_bot_service import service_type, connect, rpc
+
+
+@pytest.mark.asyncio
+async def test_findings_are_shared_plain_text_with_separate_artifact_evidence(tmp_path):
+    service=service_type()(output_root=tmp_path/'runs',smoke=True)
+    await service.start(tmp_path/'private/control.sock')
+    try:
+        reader,writer=await connect(service)
+        await rpc(reader,writer,'start',service_id=service.service_id)
+        await eventually(lambda: service.session_task.done())
+        target=dict(service_id=service.service_id,session_id=service.session_id)
+        inputs=service.runner.output_directory/'inputs.jsonl'
+        before=inputs.read_bytes()
+        result=await rpc(reader,writer,'publish_finding',params={
+            'author':'coding-agent','severity':'warning','message':'\x1b[31mCheck this\x1b[0m',
+            'name':'smoke','evidence':'tests/example.py:12'},**target)
+        assert result['ok'],result
+        finding=result['data']
+        assert finding['strategy']=='smoke' and finding['author']=='coding-agent'
+        assert '\x1b' not in finding['message']
+        listing=await rpc(reader,writer,'findings',params={'name':'smoke'},**target)
+        assert listing['data']['items']==[finding]
+        view=await rpc(reader,writer,**target)
+        assert view['data']['recent_findings']==[finding]
+        events=await rpc(reader,writer,'strategy',params={'name':'smoke','collection':'events'},**target)
+        assert events['data']['items']
+        assert inputs.read_bytes()==before
+        artifact=service.runner.output_directory/'operator_findings.jsonl'
+        assert [json.loads(line) for line in artifact.read_text().splitlines()]==[finding]
+        assert artifact.stat().st_mode & 0o777 == 0o600
+        writer.close()
+        await writer.wait_closed()
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_finding_append_failure_is_visible_without_mutating_the_account(tmp_path,monkeypatch):
+    service=service_type()(output_root=tmp_path/'runs',smoke=True)
+    await service.start(tmp_path/'private/control.sock')
+    try:
+        reader,writer=await connect(service)
+        await rpc(reader,writer,'start',service_id=service.service_id)
+        await eventually(lambda: service.session_task.done())
+        target=dict(service_id=service.service_id,session_id=service.session_id)
+        original=deepcopy(service.runner._session.state.portfolios['PAPER'].positions)
+        def fail(row):
+            raise OSError('private failure detail must not be published')
+        monkeypatch.setattr(service,'_append_finding',fail)
+        result=await rpc(reader,writer,'publish_finding',params={
+            'author':'agent','severity':'error','message':'explanation'},**target)
+        assert result['ok'] is False
+        assert 'private failure' not in result['error']['message']
+        listing=await rpc(reader,writer,'findings',**target)
+        assert listing['data']['items']==[]
+        view=await rpc(reader,writer,**target)
+        assert view['data']['finding_publication_available'] is False
+        assert service.runner._session.state.portfolios['PAPER'].positions==original
+        writer.close()
+        await writer.wait_closed()
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_finding_ring_eviction_and_invalid_input_are_explicit(tmp_path):
+    service=service_type()(output_root=tmp_path/'runs',smoke=True)
+    await service.start(tmp_path/'private/control.sock')
+    try:
+        reader,writer=await connect(service)
+        await rpc(reader,writer,'start',service_id=service.service_id)
+        await eventually(lambda: service.session_task.done())
+        target=dict(service_id=service.service_id,session_id=service.session_id)
+        for i in range(130):
+            result=await rpc(reader,writer,'publish_finding',params={
+                'author':'agent','severity':'info','message':f'finding {i}'},**target)
+            assert result['ok'],result
+        listing=await rpc(reader,writer,'findings',**target)
+        assert len(listing['data']['items'])==50
+        assert listing['data']['evicted'] and listing['data']['retained_start']==3
+        assert len(service.observations.findings)==128
+        for params in ({'author':'agent','severity':'fatal','message':'bad'},
+                       {'author':'agent','severity':'info','message':'x'*2049},
+                       {'author':'agent','severity':'info','message':'bad','name':'foreign'}):
+            result=await rpc(reader,writer,'publish_finding',params=params,**target)
+            assert result['ok'] is False
+        writer.close()
+        await writer.wait_closed()
+    finally:
+        await service.close()
 
 
 @pytest.mark.asyncio

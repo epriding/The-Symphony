@@ -68,6 +68,9 @@ class ControlService:
         self._closing = False
         self.observations = Observations(self.config)
         self._observation_error = None
+        self._publication = None
+        self._finding_identity = None
+        self._finding_failed = False
 
     async def start(self, path):
         if self._server is not None or self._closing:
@@ -183,8 +186,32 @@ class ControlService:
                 raise ProtocolError('not_found','Unknown strategy')
             return self.observations.read(name,request['params'].get('collection'),
                 **{k:v for k,v in request['params'].items() if k in ('limit','cursor')})
+        if op in ('findings','publish_finding'):
+            name=request['params'].get('name')
+            if name is not None and name not in self.observations.strategies:
+                raise ProtocolError('not_found','Unknown strategy')
+            if op=='findings':
+                rows=[row for row in self.observations.findings if name is None or row['strategy']==name]
+                return self.observations.page(rows,scope='recent',tag=['findings',name],
+                    window=self.observations.window(self.observations.findings,self.observations.finding_sequence),
+                    **{k:v for k,v in request['params'].items() if k in ('limit','cursor')})
+            if self.session_id is None:
+                raise ProtocolError('conflict','A session is required for diagnostic publication')
+            if self._finding_failed:
+                raise ProtocolError('internal_error','Finding append is unavailable after an I/O failure')
+            if self._publication and not self._publication.done():
+                raise ProtocolError('busy','A finding append is still pending; observe before retrying')
+            row=self.observations.finding(request['params'],request['request_id'])
+            self._publication=asyncio.create_task(self._commit_finding(row,self.observations))
+            self._publication.add_done_callback(lambda done: done.exception() if not done.cancelled() else None)
+            try:
+                return await asyncio.wait_for(asyncio.shield(self._publication),DEADLINE)
+            except asyncio.TimeoutError:
+                raise ProtocolError('busy','Finding durability is unknown; observe before retrying') from None
         active = self.session_task is not None and not self.session_task.done()
         if op == 'start':
+            if self._publication and not self._publication.done():
+                raise ProtocolError('busy','Diagnostic append must finish before session replacement')
             if active or self._cleanup_blocked:
                 raise ProtocolError('conflict', 'A session is active or cleanup remains unresolved')
             try:
@@ -203,6 +230,8 @@ class ControlService:
             self.runner, self.session_id = runner, session_id
             self.observations = Observations(config)
             self._observation_error = None
+            self._finding_identity = None
+            self._finding_failed = False
             self._session_error = None
             self.revision += 1
             self.session_task = asyncio.create_task(self._run_session(runner))
@@ -251,6 +280,40 @@ class ControlService:
             self.revision += 1
             self._observe(runner,'final',{})
 
+    def _append_finding(self,row):
+        path=checked_path(self.runner.output_directory/'operator_findings.jsonl')
+        flags=os.O_WRONLY|os.O_APPEND|os.O_NOFOLLOW
+        flags |= os.O_CREAT|os.O_EXCL if self._finding_identity is None else 0
+        fd=os.open(path,flags,0o600)
+        try:
+            info=os.fstat(fd)
+            identity=info.st_dev,info.st_ino
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid()
+                    or info.st_mode & 0o777 != 0o600 or info.st_nlink!=1
+                    or self._finding_identity not in (None,identity)):
+                raise OSError('Diagnostic artifact ownership changed')
+            self._finding_identity=identity
+            raw=encode_response(row)
+            offset=0
+            while offset<len(raw):
+                written=os.write(fd,raw[offset:])
+                if written<=0:
+                    raise OSError('Incomplete finding append')
+                offset+=written
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    async def _commit_finding(self,row,observations):
+        try:
+            await asyncio.to_thread(self._append_finding,row)
+        except (OSError,ValueError):
+            self._finding_failed=True
+            raise ProtocolError('internal_error','Finding append failed; artifact durability is unknown') from None
+        observations.accept_finding(row)
+        self.revision+=1
+        return row
+
     def _overview(self):
         status = self.runner.status if self.runner else {'phase':'idle', 'reason':''}
         lifecycle = 'failed' if self._session_error else status['phase']
@@ -267,6 +330,12 @@ class ControlService:
             position_count=self.observations.position_count if not self._observation_error else None,
             market_time=self.observations.market_time,snapshot_at=self.observations.snapshot_at,
             observation_available=self._observation_error is None,
+            recent_events=list(self.observations.events)[-8:],
+            event_window=self.observations.window_info(self.observations.events,self.observations.event_sequence),
+            recent_findings=list(self.observations.findings)[-8:],
+            finding_window=self.observations.window_info(self.observations.findings,self.observations.finding_sequence),
+            finding_publication_available=not self._finding_failed,
+            finding_append_pending=bool(self._publication and not self._publication.done()),
             capture_id=self.config['execution'].get('session_id'),
             capture_directory=str(self.runner.output_directory) if self.runner else None)
 
@@ -291,6 +360,13 @@ class ControlService:
             self._worker.cancel()
             with suppress(asyncio.CancelledError):
                 await self._worker
+        if self._publication and not self._publication.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(self._publication),DEADLINE)
+            except ProtocolError:
+                pass
+            except asyncio.TimeoutError:
+                self._cleanup_blocked=True
         if self.session_task and not self.session_task.done():
             self.runner.request_stop()
             runtime = self.config['runtime']
