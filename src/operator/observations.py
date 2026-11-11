@@ -1,11 +1,46 @@
 """Copied, allowlisted observations; no account references cross this boundary."""
 from collections import deque
 from decimal import Decimal
+import base64
+import binascii
+import hashlib
+import hmac
 import json
+import secrets
 import time
 import unicodedata
 
 from ..utilities.logger import redact
+from ..paper_trading.runtime_config import retained_bytes
+from .protocol import ProtocolError, bounded_text
+
+MODEL_LIMIT = 4 * 1024 * 1024
+
+
+def validate_projection(config):
+    identifiers = [(config['execution'].get('session_id','paper'),128)]
+    for entry in config['strategies']:
+        identifiers.extend(((entry['name'],256),(entry['factory'],256)))
+    for venue,feed in config['feeds'].items():
+        identifiers.append((venue,256))
+        identifiers.extend((market,256) for market in feed['markets'])
+    for value,limit in identifiers:
+        try:
+            bounded_text(value,limit)
+            if any(unicodedata.category(c) in ('Cc','Cs') for c in value):
+                raise ValueError('Control character')
+        except (ValueError,UnicodeError):
+            raise ValueError('Control identifier exceeds projection limits or contains control characters') from None
+    if any(route != 'PAPER' for route in config['strategy_portfolios'].values()):
+        raise ValueError('Control projections support PAPER routes only')
+    limits=config['runtime']['limits']
+    estimate=(retained_bytes(config)
+        + limits['max_active_orders']*4096
+        + limits['max_positions']*limits['max_strategies']*2048
+        + limits['max_strategies']*4096 + limits['max_markets']*2048
+        + 256*3072*2 + 128*6144)
+    if estimate>MODEL_LIMIT:
+        raise ValueError('Configured control projection exceeds service memory budget')
 
 
 def safe_text(value, limit=2048):
@@ -20,6 +55,8 @@ def amount(value):
     number = Decimal(str(value))
     if not number.is_finite():
         raise ValueError('Nonfinite observed amount')
+    if len(str(number))>128:
+        raise ValueError('Observed amount exceeds projection limit')
     return str(number)
 
 
@@ -38,6 +75,7 @@ class Observations:
         self.activities = {}
         self.errors = {}
         self.strategies = self._strategies({})
+        self._cursor_key=secrets.token_bytes(32)
 
     def _strategies(self, readiness):
         summaries = {}
@@ -118,20 +156,69 @@ class Observations:
                             summaries[name]['position_count'] += 1
         for summary in summaries.values():
             summary['operator_state']=runner.operator_state
+        prospective=dict(config=self.config,strategies=summaries,orders=orders,
+            positions=positions,fills=self.fills,activities=self.activities,errors=self.errors)
+        if retained_bytes(prospective)>MODEL_LIMIT:
+            raise ProtocolError('limit_exceeded','Current projection exceeds memory budget')
         self.strategies,self.orders,self.positions=summaries,orders,positions
         self.venues=status.get('venues',{})
         self.market_time=runner.clock()
         self.snapshot_at=time.time()
         self.last_refresh=time.monotonic()
 
-    @staticmethod
-    def page(rows, *, scope='active'):
-        rows=sorted(rows,key=lambda row:row['id'])
-        return dict(items=rows,next_cursor=None,has_more=False,scope=scope)
+    def storage_bytes(self):
+        return retained_bytes(dict(config=self.config,strategies=self.strategies,
+            orders=self.orders,positions=self.positions,fills=self.fills,
+            venues=self.venues,activities=self.activities,errors=self.errors))
 
-    def read(self,name,collection=None):
+    def _encode_cursor(self,tag,last):
+        raw=json.dumps(dict(tag=tag,after=last),separators=(',',':')).encode()
+        signature=hmac.new(self._cursor_key,raw,hashlib.sha256).hexdigest()
+        return base64.urlsafe_b64encode(raw).decode().rstrip('=')+'.'+signature
+
+    def _decode_cursor(self,value,tag):
+        bounded_text(value,2048)
+        try:
+            encoded,signature=value.split('.')
+            raw=base64.b64decode(encoded+'='*(-len(encoded)%4),altchars=b'-_',validate=True)
+            expected=hmac.new(self._cursor_key,raw,hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(signature,expected):
+                raise ProtocolError('conflict','Cursor belongs to another session or service')
+            data=json.loads(raw)
+            if not isinstance(data,dict) or set(data)!={'tag','after'}:
+                raise ValueError('Invalid cursor fields')
+            if data['tag']!=tag:
+                raise ProtocolError('conflict','Cursor collection or filter changed')
+            bounded_text(data['after'],1536)
+            return data['after']
+        except ProtocolError:
+            raise
+        except (ValueError,UnicodeError,binascii.Error,TypeError):
+            raise ProtocolError('invalid_request','Malformed collection cursor') from None
+
+    def page(self,rows, *, scope='active',limit=50,cursor=None,tag=None,window=None):
+        if type(limit) is not int or not 1<=limit<=100:
+            raise ProtocolError('invalid_request','Page limit must be an integer from 1 to 100')
+        after=self._decode_cursor(cursor,tag) if cursor is not None else None
+        rows=sorted(rows,key=lambda row:row['id'])
+        rows=[row for row in rows if after is None or row['id']>after]
+        selected=rows[:limit]
+        more=len(rows)>limit
+        result=dict(items=selected,next_cursor=self._encode_cursor(tag,selected[-1]['id'])
+            if more else None,has_more=more,scope=scope)
+        if window is not None:
+            first,last,total=window
+            result.update(retained_start=first,retained_end=last,evicted=total>0 and (first or 1)>1)
+        return result
+
+    def read(self,name,collection=None,**paging):
         if collection is None:
             return self.strategies[name]
         rows={'orders':self.orders,'positions':self.positions,'fills':self.fills,'events':[]}[collection]
+        window=None
+        if collection=='fills':
+            window=(self.fills[0]['sequence'] if self.fills else None,
+                    self.fills[-1]['sequence'] if self.fills else None,self.fill_sequence)
         return self.page([row for row in rows if row['strategy']==name],
-            scope='recent' if collection in ('fills','events') else 'active')
+            scope='recent' if collection in ('fills','events') else 'active',
+            tag=['strategy',name,collection],window=window,**paging)

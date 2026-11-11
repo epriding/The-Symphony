@@ -12,7 +12,7 @@ from uuid import uuid4
 from .protocol import (
     DEADLINE, MAX_REQUEST, ProtocolError, decode_request, encode_response,
 )
-from .observations import Observations, safe_text
+from .observations import Observations, safe_text, validate_projection
 from ..bot import BotRunner
 from ..paper_trading.runtime_config import validate_bot_config
 
@@ -48,6 +48,7 @@ class ControlService:
             from ..strategies.smoke import smoke_fixture
             config = smoke_fixture()[0]
         self.config = validate_bot_config(config, require_runtime=True)
+        validate_projection(self.config)
         self.smoke = smoke
         self._runner_factory = runner_factory or BotRunner
         self.runner = None
@@ -175,11 +176,13 @@ class ControlService:
             if self._observation_error:
                 raise ProtocolError('limit_exceeded','Current observation is unavailable')
             if op == 'strategies':
-                return self.observations.page(self.observations.strategies.values())
+                return self.observations.page(self.observations.strategies.values(),
+                    tag=['strategies'],**request['params'])
             name=request['params']['name']
             if name not in self.observations.strategies:
                 raise ProtocolError('not_found','Unknown strategy')
-            return self.observations.read(name,request['params'].get('collection'))
+            return self.observations.read(name,request['params'].get('collection'),
+                **{k:v for k,v in request['params'].items() if k in ('limit','cursor')})
         active = self.session_task is not None and not self.session_task.done()
         if op == 'start':
             if active or self._cleanup_blocked:
@@ -260,8 +263,8 @@ class ControlService:
             strategy_ready_count=sum(s['ready'] for s in self.observations.strategies.values()),
             venue_count=len(self.config['feeds']),
             venue_ready_count=sum(v['ready'] for v in self.observations.venues.values()),
-            active_order_count=len(self.observations.orders),
-            position_count=self.observations.position_count,
+            active_order_count=len(self.observations.orders) if not self._observation_error else None,
+            position_count=self.observations.position_count if not self._observation_error else None,
             market_time=self.observations.market_time,snapshot_at=self.observations.snapshot_at,
             observation_available=self._observation_error is None,
             capture_id=self.config['execution'].get('session_id'),

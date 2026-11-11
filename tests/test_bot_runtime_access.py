@@ -12,6 +12,62 @@ from test_bot_service import service_type, connect, rpc
 
 
 @pytest.mark.asyncio
+async def test_strategy_pages_bind_cursors_to_service_session_and_filter(tmp_path):
+    config=valid_config(strategies=[strategy_config(f'quiet-{i:02}') for i in range(5)])
+    service=service_type()(config,output_root=tmp_path/'runs')
+    await service.start(tmp_path/'private/control.sock')
+    try:
+        reader,writer=await connect(service)
+        target=dict(service_id=service.service_id)
+        first=await rpc(reader,writer,'strategies',params={'limit':2},**target)
+        assert first['ok'],first
+        assert [r['name'] for r in first['data']['items']]==['quiet-00','quiet-01']
+        cursor=first['data']['next_cursor']
+        assert cursor and first['data']['has_more']
+        second=await rpc(reader,writer,'strategies',params={'limit':2,'cursor':cursor},**target)
+        assert [r['name'] for r in second['data']['items']]==['quiet-02','quiet-03']
+        wrong_filter=await rpc(reader,writer,'strategy',
+            params={'name':'quiet-00','collection':'orders','cursor':cursor},**target)
+        assert wrong_filter['ok'] is False
+        for limit in (0,101,True,'2'):
+            invalid=await rpc(reader,writer,'strategies',params={'limit':limit},**target)
+            assert invalid['ok'] is False
+        malformed=await rpc(reader,writer,'strategies',params={'cursor':'not a cursor'},**target)
+        assert malformed['ok'] is False
+        writer.close()
+        await writer.wait_closed()
+    finally:
+        await service.close()
+
+
+def test_control_projection_admission_rejects_unrepresentable_configuration(tmp_path):
+    config=valid_config()
+    config['execution']['session_id']='x'*257
+    with pytest.raises(ValueError,match='identifier|projection'):
+        service_type()(config,output_root=tmp_path/'runs')
+
+
+def test_observation_model_and_fill_retention_remain_bounded():
+    from src.operator.observations import Observations
+    from types import SimpleNamespace
+    config=valid_config()
+    observations=Observations(config)
+    approved=SimpleNamespace(strategy='one',portfolio_id='PAPER',exchange=VENUES[0],
+        market_id='m',outcome='YES',side=Side.BUY)
+    runner=SimpleNamespace(_session=SimpleNamespace(engine=SimpleNamespace(
+        orders={'order':SimpleNamespace(approved=approved)})))
+    for index in range(300):
+        observations.observe(runner,'execution',dict(event='execution',
+            execution_id=str(index),order_id='order',quantity='1',price='.5',timestamp=START))
+    assert len(observations.fills)==256
+    assert observations.storage_bytes()<3*1024*1024
+    page=observations.read('one','fills')
+    assert len(page['items'])==50 and page['has_more']
+    assert page['retained_start']==45 and page['retained_end']==300
+    assert page['evicted'] is True
+
+
+@pytest.mark.asyncio
 async def test_finished_smoke_exposes_real_fills_positions_and_paper_mode(tmp_path):
     service = service_type()(output_root=tmp_path/'runs', smoke=True)
     await service.start(tmp_path/'private/control.sock')

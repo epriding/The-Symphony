@@ -1,6 +1,6 @@
 # Runtime-access tasks
 
-Plan: [plan.md](plan.md). Status: Approved; RA-05 in progress.
+Plan: [plan.md](plan.md). Status: Approved; RA-06 in progress.
 Every behavior task uses RED -> GREEN -> full regression -> compile -> review
 -> commit. Also run fresh offline smoke/replay after runner, capture or CLI
 changes. Preserve concrete test results in `.audit/` and log decisions in
@@ -90,7 +90,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ## RA-05: Page observations within finite memory limits
 
-- [ ] Add session-bound collection cursors and enforce projection budgets.
+- [x] Add session-bound collection cursors and enforce projection budgets.
 - Acceptance: Every collection honors limits, ordering, scope and revision;
   foreign/malformed cursors fail explicitly. Repeated reads and session
   replacement remain bounded without evicting ledger obligations or scanning
@@ -105,7 +105,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ### Checkpoint: shared account observations
 
-- [ ] Full suite/compile pass; trace controls and trade views to the one runner,
+- [x] Full suite/compile pass; trace controls and trade views to the one runner,
   confirm projection/queue high-water evidence and correct session identity.
 
 ## RA-06: Share bounded runtime events and diagnostic findings

@@ -6,7 +6,7 @@ MAX_REQUEST = 64 * 1024
 MAX_RESPONSE = 1024 * 1024
 DEADLINE = 5.0
 OPERATIONS = {op: set() for op in ('overview', 'start', 'pause', 'resume', 'stop')}
-OPERATIONS.update(strategies=set(), strategy={'name','collection'})
+OPERATIONS.update(strategies={'limit','cursor'}, strategy={'name','collection','limit','cursor'})
 
 
 class ProtocolError(ValueError):
@@ -75,10 +75,17 @@ def decode_request(frame):
         invalid('Unknown operation')
     if not isinstance(value['params'], dict) or set(value['params']) - OPERATIONS[op]:
         invalid('Unexpected operation parameters')
+    params=value['params']
+    if 'limit' in params and (type(params['limit']) is not int or not 1<=params['limit']<=100):
+        invalid('Page limit must be an integer from 1 to 100')
+    if 'cursor' in params:
+        bounded_text(params['cursor'],2048)
     if op == 'strategy':
         bounded_text(value['params'].get('name'),256)
         if value['params'].get('collection') not in (None,'orders','positions','fills','events'):
             invalid('Unknown strategy collection')
+        if not params.get('collection') and set(params)&{'limit','cursor'}:
+            invalid('Paging requires a strategy collection')
     return value
 
 
