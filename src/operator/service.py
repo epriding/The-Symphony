@@ -81,6 +81,8 @@ class ControlService:
         self._finding_failed = False
 
     async def start(self, path):
+        if not hasattr(socket,'SO_PEERCRED'):
+            raise ValueError('The local service requires Linux peer credentials')
         if self._server is not None or self._closing:
             raise ValueError('Service is already started or closed')
         self.socket_path = checked_path(path)

@@ -23,6 +23,15 @@ from bot_v1_support import valid_config
 
 ROOT = Path(__file__).resolve().parents[1]
 SENTINEL = "BOT_V1_TEST_SECRET_DO_NOT_LOG_486103"
+
+
+@pytest.mark.parametrize('arguments', [[],['--smoke','--config','nonexistent.json'],['--config','nonexistent.json']])
+def test_serve_invalid_modes_and_config_fail_before_starting_any_session(tmp_path,arguments):
+    result=run_cli('serve',*arguments,'--socket',tmp_path/'private/control.sock',
+        '--output-root',tmp_path/'runs')
+    assert result.returncode==2
+    assert not (tmp_path/'runs').exists()
+    assert not (tmp_path/'private/control.sock').exists()
 _LAUNCHER = """
 import runpy, socket, sys
 import dotenv

@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import socket
+import subprocess
+import sys
 
 import pytest
 
@@ -461,3 +463,166 @@ async def test_resolved_metadata_must_fit_control_identifiers_before_activation(
         await writer.wait_closed()
     finally:
         await service.close()
+
+
+ROOT=Path(__file__).resolve().parents[1]
+
+
+async def child_line(process):
+    return await asyncio.wait_for(asyncio.to_thread(process.stdout.readline),5)
+
+
+@pytest.mark.asyncio
+async def test_serve_cli_is_idle_until_start_and_outlives_its_finite_session(tmp_path):
+    path=tmp_path/'private/control.sock'
+    process=subprocess.Popen([sys.executable,'main.py','serve','--smoke',
+        '--socket',str(path),'--output-root',str(tmp_path/'runs')],cwd=ROOT,
+        stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    writer=None
+    try:
+        ready=await asyncio.wait_for(asyncio.to_thread(process.stderr.readline),5)
+        assert 'ready' in ready.lower(),ready
+        reader,writer=await asyncio.open_unix_connection(str(path))
+        view=await rpc(reader,writer)
+        assert view['data']['lifecycle']=='idle'
+        assert not (tmp_path/'runs').exists()
+        started=await rpc(reader,writer,'start',service_id=view['service_id'])
+        target=dict(service_id=view['service_id'],session_id=started['session_id'])
+        async def terminal():
+            while True:
+                result=await rpc(reader,writer,**target)
+                if result['data']['lifecycle'] in ('stopped','failed'):
+                    return result
+                await asyncio.sleep(.01)
+        result=await asyncio.wait_for(terminal(),5)
+        assert result['data']['lifecycle']=='stopped'
+        assert process.poll() is None
+        writer.close()
+        await writer.wait_closed()
+        writer=None
+        process.terminate()
+        await asyncio.wait_for(asyncio.to_thread(process.wait),5)
+        assert process.returncode==0
+        assert not path.exists()
+        manifest=next((tmp_path/'runs').glob('*/manifest.json'))
+        assert json.loads(manifest.read_text())['finalized'] is True
+    finally:
+        if writer:
+            writer.close()
+        if process.poll() is None:
+            process.kill()
+            await asyncio.to_thread(process.wait)
+        process.stdout.close()
+        process.stderr.close()
+
+
+HOLDING_SERVICE = r'''
+import asyncio,signal,sys,socket
+from pathlib import Path
+original_connect=socket.socket.connect
+def local_only(sock,address):
+    if sock.family!=socket.AF_UNIX:
+        raise AssertionError('offline service attempted external connection')
+    return original_connect(sock,address)
+socket.socket.connect=local_only
+import dotenv
+def no_dotenv(*args,**kwargs):
+    raise AssertionError('offline service read dotenv')
+dotenv.load_dotenv=no_dotenv
+from src.bot import BotRunner
+from src.operator.service import ControlService
+from src.strategies.smoke import smoke_fixture
+class HoldingFeed:
+    def __init__(self,feed):
+        self.feed=feed
+        self.exchange,self.markets=feed.exchange,feed.markets
+    async def get_market(self,identifier):
+        return await self.feed.get_market(identifier)
+    async def stream(self):
+        self.feed.sequencer=self.sequencer
+        async for value in self.feed.stream():
+            yield value
+        await asyncio.Event().wait()
+    async def settlements(self):
+        if False:
+            yield None
+def factory(config,**kwargs):
+    config,feeds,clock=smoke_fixture()
+    return BotRunner(config,**kwargs,feeds=[HoldingFeed(f) for f in feeds],clock=clock)
+async def run():
+    config=smoke_fixture()[0]
+    service=ControlService(config,output_root=sys.argv[2],runner_factory=factory)
+    await service.start(sys.argv[1])
+    stop=asyncio.Event()
+    loop=asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGTERM,stop.set)
+    print('ready',flush=True)
+    try:
+        await stop.wait()
+    finally:
+        await service.close()
+asyncio.run(run())
+'''
+
+STARTING_CLIENT = r'''
+import json,socket,sys,threading
+sock=socket.socket(socket.AF_UNIX)
+sock.connect(sys.argv[1])
+stream=sock.makefile('rwb',buffering=0)
+def request(op,service_id=None):
+    row=dict(version=1,request_id='process-client',op=op,params={},service_id=service_id,session_id=None)
+    stream.write((json.dumps(row)+'\n').encode())
+    return json.loads(stream.readline())
+hello=request('overview')
+started=request('start',hello['service_id'])
+assert started['ok'],started
+print(json.dumps(started),flush=True)
+threading.Event().wait()
+'''
+
+
+@pytest.mark.asyncio
+async def test_real_killed_client_can_reattach_to_same_active_trading_process(tmp_path):
+    path=tmp_path/'private/control.sock'
+    service=subprocess.Popen([sys.executable,'-u','-c',HOLDING_SERVICE,str(path),str(tmp_path/'runs')],
+        cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    client=None
+    writer=None
+    try:
+        assert (await child_line(service)).strip()=='ready'
+        client=subprocess.Popen([sys.executable,'-u','-c',STARTING_CLIENT,str(path)],cwd=ROOT,
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        started=json.loads(await child_line(client))
+        client.kill()
+        await asyncio.to_thread(client.wait)
+        assert client.returncode<0
+        reader,writer=await asyncio.open_unix_connection(str(path))
+        target=dict(service_id=started['service_id'],session_id=started['session_id'])
+        async def traded():
+            while True:
+                result=await rpc(reader,writer,**target)
+                assert result['ok'],result
+                assert result['session_id']==started['session_id']
+                if result['data']['position_count']==2:
+                    return result
+                await asyncio.sleep(.01)
+        result=await asyncio.wait_for(traded(),5)
+        assert result['data']['lifecycle']=='ready'
+        assert service.poll() is None
+        writer.close()
+        await writer.wait_closed()
+        writer=None
+        service.terminate()
+        await asyncio.wait_for(asyncio.to_thread(service.wait),5)
+        assert service.returncode==0,service.stderr.read()
+        assert json.loads(next((tmp_path/'runs').glob('*/manifest.json')).read_text())['finalized']
+    finally:
+        if writer:
+            writer.close()
+        for process in (client,service):
+            if process:
+                if process.poll() is None:
+                    process.kill()
+                    await asyncio.to_thread(process.wait)
+                process.stdout.close()
+                process.stderr.close()

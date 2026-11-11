@@ -1,6 +1,6 @@
 # Runtime-access tasks
 
-Plan: [plan.md](plan.md). Status: Approved; RA-08 in progress.
+Plan: [plan.md](plan.md). Status: Approved; RA-09 in progress.
 Every behavior task uses RED -> GREEN -> full regression -> compile -> review
 -> commit. Also run fresh offline smoke/replay after runner, capture or CLI
 changes. Preserve concrete test results in `.audit/` and log decisions in
@@ -140,7 +140,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ## RA-08: Launch serve explicitly and verify process lifetime
 
-- [ ] Add the serve entrypoint, signals and real subprocess acceptance tests.
+- [x] Add the serve entrypoint, signals and real subprocess acceptance tests.
 - Acceptance: Serve starts idle with mutually exclusive smoke/config modes;
   existing commands and exit codes remain compatible. Real subprocess tests
   detach/kill clients and reattach to the same active run, exercise service
@@ -155,7 +155,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ### Checkpoint: complete provider behavior
 
-- [ ] Full suite, compile, dependency check, fresh smoke/replay and real socket/
+- [x] Full suite, compile, dependency check, fresh smoke/replay and real socket/
   subprocess tests pass. All RA01–RA13 criteria have concrete evidence.
 
 ## RA-09: Document operation and audit the completed module

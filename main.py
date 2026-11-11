@@ -9,6 +9,37 @@ from src.bot import BotRunner, load_bot_config, replay_bot
 from src.utilities.logger import redact
 
 
+async def _serve(args):
+    from src.operator.service import ControlService
+    if args.smoke:
+        service=ControlService(smoke=True,output_root=args.output_root)
+    else:
+        config=load_bot_config(args.config)
+        if config.get('runtime',{}).get('source')!='public':
+            raise ValueError('serve --config requires a public source; use --smoke for offline fixtures')
+        service=ControlService(config,output_root=args.output_root)
+    loop=asyncio.get_running_loop()
+    stopped=asyncio.Event()
+    installed=[]
+    try:
+        try:
+            await service.start(args.socket)
+        except OSError:
+            raise ValueError('Cannot bind the private control socket') from None
+        for sig in (signal.SIGINT,signal.SIGTERM):
+            loop.add_signal_handler(sig,stopped.set)
+            installed.append(sig)
+        print('Bot control service ready (idle; connect a client to start a session).',
+            file=sys.stderr,flush=True)
+        await stopped.wait()
+    finally:
+        try:
+            await service.close()
+        finally:
+            for sig in installed:
+                loop.remove_signal_handler(sig)
+
+
 async def _execute(args):
     if args.command == 'replay':
         return await replay_bot(args.capture, args.output)
@@ -70,8 +101,18 @@ def main(argv=None):
     replay = commands.add_parser('replay')
     replay.add_argument('--capture', required=True)
     replay.add_argument('--output', required=True)
+    serve=commands.add_parser('serve',help='Run an initially idle local paper-bot control service')
+    mode=serve.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--smoke',action='store_true')
+    mode.add_argument('--config')
+    serve.add_argument('--socket',required=True)
+    serve.add_argument('--output-root',required=True)
     try:
-        summary = asyncio.run(_execute(parser.parse_args(argv)))
+        args=parser.parse_args(argv)
+        if args.command=='serve':
+            asyncio.run(_serve(args))
+            return 0
+        summary = asyncio.run(_execute(args))
         print(json.dumps({key: summary[key] for key in ('session_id', 'submitted', 'accounts', 'assumptions')}, indent=2))
         return 0
     except ValueError as error:
