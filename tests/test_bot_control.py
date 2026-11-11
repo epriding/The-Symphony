@@ -165,3 +165,52 @@ async def test_noncooperative_pause_callback_fails_visibly(tmp_path):
         if not task.done():
             runner.request_stop()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_service_stop_retains_uncooperative_callback_as_unresolved_cleanup(tmp_path):
+    from contextlib import suppress
+    from test_bot_service import service_type,connect,rpc
+    config=valid_config(strategies=[strategy_config('alpha',factory='stubborn')])
+    config['runtime']['shutdown_grace_seconds']=.03
+    clock=VirtualClock(START)
+    feeds=[ControlledFeed(v,clock=clock) for v in VENUES]
+    entered,release=asyncio.Event(),asyncio.Event()
+    def strategy(context):
+        class Stubborn:
+            async def on_snapshot(self,snapshot):
+                entered.set()
+                while not release.is_set():
+                    try:
+                        await release.wait()
+                    except asyncio.CancelledError:
+                        pass
+        return Stubborn()
+    def factory(config,**kwargs):
+        return BotRunner(config,**kwargs,feeds=feeds,clock=clock,
+            strategy_factories={'stubborn':strategy})
+    service=service_type()(config,output_root=tmp_path/'runs',runner_factory=factory)
+    await service.start(tmp_path/'private/control.sock')
+    pair=None
+    try:
+        pair=await connect(service)
+        await rpc(*pair,'start',service_id=service.service_id)
+        await eventually(lambda: all(f.started.is_set() for f in feeds))
+        for feed in feeds:
+            await feed.push_book()
+        await asyncio.wait_for(entered.wait(),2)
+        pair[1].close()
+        await pair[1].wait_closed()
+        with pytest.raises(RuntimeError,match='cleanup'):
+            await service.close()
+        assert any(not task.done() for task in service.runner._zombies)
+        assert service._cleanup_blocked
+        assert not json.loads((service.runner.output_directory/'manifest.json').read_text())['finalized']
+    finally:
+        release.set()
+        if pair:
+            pair[1].close()
+        if service.runner:
+            await asyncio.gather(*service.runner._zombies,return_exceptions=True)
+        with suppress(RuntimeError):
+            await service.close()

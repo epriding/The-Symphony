@@ -63,6 +63,7 @@ def amount(value):
 class Observations:
     def __init__(self, config):
         self.config = config
+        self.model_limit=MODEL_LIMIT-retained_bytes(config)
         self.fills = deque(maxlen=256)
         self.fill_sequence = 0
         self.events=deque(maxlen=256)
@@ -177,7 +178,7 @@ class Observations:
         prospective=dict(config=self.config,strategies=summaries,orders=orders,
             positions=positions,fills=self.fills,events=self.events,findings=self.findings,
             activities=self.activities,errors=self.errors)
-        if retained_bytes(prospective)>MODEL_LIMIT:
+        if retained_bytes(prospective)>self.model_limit:
             raise ProtocolError('limit_exceeded','Current projection exceeds memory budget')
         self.strategies,self.orders,self.positions=summaries,orders,positions
         self.venues=status.get('venues',{})

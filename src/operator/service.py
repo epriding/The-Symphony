@@ -10,7 +10,8 @@ import time
 from uuid import uuid4
 
 from .protocol import (
-    DEADLINE, MAX_REQUEST, ProtocolError, decode_request, encode_response,
+    CONTROL_OPS, DEADLINE, MAX_REQUEST, QUERY_RESERVE, SERVICE_BUDGET, STATIC_RESERVE,
+    ProtocolError, bounded_text, decode_request, encode_response,
 )
 from .observations import Observations, safe_text, validate_projection
 from ..bot import BotRunner
@@ -65,6 +66,13 @@ class ControlService:
         self._clients = {}
         self._queue = asyncio.Queue(maxsize=32)
         self._worker = None
+        self._control_queue = asyncio.Queue(maxsize=32)
+        self._control_worker = None
+        self._queued = 0
+        self._query_leases = 0
+        self.memory_highwater = STATIC_RESERVE
+        self.client_highwater = 0
+        self.queue_highwater = 0
         self._closing = False
         self.observations = Observations(self.config)
         self._observation_error = None
@@ -89,7 +97,8 @@ class ControlService:
             sock.setblocking(False)
             self._server = await asyncio.start_unix_server(self._accept, sock=sock,
                 limit=MAX_REQUEST)
-            self._worker = asyncio.create_task(self._work())
+            self._worker = asyncio.create_task(self._work(self._queue))
+            self._control_worker = asyncio.create_task(self._work(self._control_queue))
         except BaseException:
             sock.close()
             self._remove_owned_socket()
@@ -101,44 +110,73 @@ class ControlService:
         return struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[1]
 
     def _accept(self, reader, writer):
-        if self._closing or len(self._clients) >= 8 or self._peer_uid(writer) != os.getuid():
+        try:
+            permitted=self._peer_uid(writer)==os.getuid()
+        except (OSError,AttributeError,struct.error):
+            permitted=False
+        if self._closing or len(self._clients) >= 8 or not permitted:
             writer.close()
             return
         task = asyncio.create_task(self._connection(reader, writer))
         self._clients[task] = writer
-        task.add_done_callback(lambda done: self._clients.pop(done, None))
+        self.client_highwater=max(self.client_highwater,len(self._clients))
+        task.add_done_callback(self._client_done)
+
+    def _client_done(self,task):
+        self._clients.pop(task,None)
+        if not task.cancelled():
+            task.exception()
+
+    def _claim_query(self):
+        projected=STATIC_RESERVE+(self._query_leases+1)*QUERY_RESERVE
+        if projected>SERVICE_BUDGET:
+            raise ProtocolError('busy','Read response budget is occupied; retry observation later')
+        self._query_leases+=1
+        self.memory_highwater=max(self.memory_highwater,projected)
 
     async def _connection(self, reader, writer):
         try:
             while not self._closing:
                 request = None
+                leased=False
                 try:
-                    raw = await asyncio.wait_for(reader.readline(), DEADLINE)
-                    if not raw:
-                        return
-                    request = decode_request(raw)
-                    future = asyncio.get_running_loop().create_future()
                     try:
-                        self._queue.put_nowait((request, future))
-                    except asyncio.QueueFull:
-                        raise ProtocolError('busy', 'Control queue is full') from None
-                    response = await asyncio.wait_for(future, DEADLINE)
-                except ProtocolError as error:
-                    response = self._envelope(request, error=error)
-                except ValueError:  # StreamReader rejected an oversized line.
-                    return
-                try:
-                    raw_response = await asyncio.wait_for(asyncio.to_thread(encode_response, response), DEADLINE)
-                except ProtocolError as error:
-                    raw_response = encode_response(self._envelope(request, error=error))
-                writer.write(raw_response)
-                await asyncio.wait_for(writer.drain(), DEADLINE)
+                        raw = await asyncio.wait_for(reader.readline(), DEADLINE)
+                        if not raw:
+                            return
+                        request = decode_request(raw)
+                        if request['op'] not in CONTROL_OPS:
+                            self._claim_query()
+                            leased=True
+                        if self._queued>=32:
+                            raise ProtocolError('busy','Control queue is full')
+                        future = asyncio.get_running_loop().create_future()
+                        queue=self._control_queue if request['op'] in CONTROL_OPS else self._queue
+                        queue.put_nowait((request,future))
+                        self._queued+=1
+                        self.queue_highwater=max(self.queue_highwater,self._queued)
+                        response = await asyncio.wait_for(future, DEADLINE)
+                    except ProtocolError as error:
+                        response = self._envelope(request, error=error)
+                    except ValueError:  # StreamReader rejected an oversized line.
+                        return
+                    try:
+                        raw_response = await asyncio.wait_for(asyncio.to_thread(encode_response, response), DEADLINE)
+                    except ProtocolError as error:
+                        raw_response = encode_response(self._envelope(request, error=error))
+                    writer.write(raw_response)
+                    await asyncio.wait_for(writer.drain(), DEADLINE)
+                finally:
+                    if leased:
+                        self._query_leases-=1
         except (OSError, asyncio.TimeoutError):
             pass
         finally:
             writer.close()
-            with suppress(OSError, asyncio.TimeoutError):
+            try:
                 await asyncio.wait_for(writer.wait_closed(), DEADLINE)
+            except (OSError,asyncio.TimeoutError):
+                writer.transport.abort()
 
     def _envelope(self, request, *, data=None, error=None):
         response = dict(version=1, request_id=request['request_id'] if request else None,
@@ -146,11 +184,13 @@ class ControlService:
             revision=self.revision, observed_at=time.time(), data=data)
         if error:
             response['error'] = dict(code=error.code, message=str(error))
+        elif request and request['op']=='publish_finding' and data:
+            response['session_id']=data['session_id']
         return response
 
-    async def _work(self):
+    async def _work(self,queue):
         while True:
-            request, future = await self._queue.get()
+            request, future = await queue.get()
             try:
                 if future.cancelled():
                     continue
@@ -165,7 +205,8 @@ class ControlService:
                 if not future.done():
                     future.set_result(response)
             finally:
-                self._queue.task_done()
+                self._queued-=1
+                queue.task_done()
 
     async def _execute(self, request):
         op = request['op']
@@ -202,6 +243,7 @@ class ControlService:
             if self._publication and not self._publication.done():
                 raise ProtocolError('busy','A finding append is still pending; observe before retrying')
             row=self.observations.finding(request['params'],request['request_id'])
+            row['session_id']=self.session_id
             self._publication=asyncio.create_task(self._commit_finding(row,self.observations))
             self._publication.add_done_callback(lambda done: done.exception() if not done.cancelled() else None)
             try:
@@ -254,6 +296,13 @@ class ControlService:
                     operator_state=overview['operator_state'])
 
     def _observe(self, runner, kind, payload):
+        if kind=='metadata':
+            try:
+                bounded_text(payload['exchange'],256,identifier=True)
+                bounded_text(payload['market_id'],256,identifier=True)
+            except ProtocolError:
+                raise ValueError('Resolved metadata identifier exceeds control projection limits') from None
+            return
         try:
             if self.observations.observe(runner,kind,payload):
                 self.revision += 1
@@ -336,6 +385,12 @@ class ControlService:
             finding_window=self.observations.window_info(self.observations.findings,self.observations.finding_sequence),
             finding_publication_available=not self._finding_failed,
             finding_append_pending=bool(self._publication and not self._publication.done()),
+            service_limits=dict(memory_budget_bytes=SERVICE_BUDGET,
+                reserved_bytes=STATIC_RESERVE+self._query_leases*QUERY_RESERVE,
+                memory_highwater_bytes=self.memory_highwater,
+                projection_bytes=self.observations.storage_bytes(),
+                clients=len(self._clients),client_highwater=self.client_highwater,
+                queued=self._queued,queue_highwater=self.queue_highwater),
             capture_id=self.config['execution'].get('session_id'),
             capture_directory=str(self.runner.output_directory) if self.runner else None)
 
@@ -348,25 +403,35 @@ class ControlService:
 
     async def close(self):
         self._closing = True
+        close_failed=False
         if self._server:
             self._server.close()
-            await self._server.wait_closed()
         clients = list(self._clients)
         for task in clients:
+            self._clients[task].transport.abort()
             task.cancel()
         if clients:
             await asyncio.gather(*clients, return_exceptions=True)
-        if self._worker:
-            self._worker.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._worker
+        if self._server:
+            await asyncio.wait_for(self._server.wait_closed(),DEADLINE)
+        workers=[t for t in (self._worker,self._control_worker) if t is not None]
+        for worker in workers:
+            worker.cancel()
+        if workers:
+            await asyncio.gather(*workers,return_exceptions=True)
+        for queue in (self._queue,self._control_queue):
+            while not queue.empty():
+                _,future=queue.get_nowait()
+                future.cancel()
+                self._queued-=1
+                queue.task_done()
         if self._publication and not self._publication.done():
             try:
                 await asyncio.wait_for(asyncio.shield(self._publication),DEADLINE)
             except ProtocolError:
                 pass
             except asyncio.TimeoutError:
-                self._cleanup_blocked=True
+                close_failed=True
         if self.session_task and not self.session_task.done():
             self.runner.request_stop()
             runtime = self.config['runtime']
@@ -375,11 +440,12 @@ class ControlService:
             try:
                 await asyncio.wait_for(asyncio.shield(self.session_task), timeout)
             except asyncio.TimeoutError:
+                close_failed=True
                 self.session_task.cancel()
                 done, pending = await asyncio.wait({self.session_task},
                     timeout=runtime['shutdown_grace_seconds']+1)
                 if pending:
                     self._cleanup_blocked = True
         self._remove_owned_socket()
-        if self._cleanup_blocked:
+        if self._cleanup_blocked or close_failed:
             raise RuntimeError('Service cleanup remains unresolved')

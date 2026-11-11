@@ -1,6 +1,6 @@
 # Runtime-access tasks
 
-Plan: [plan.md](plan.md). Status: Approved; RA-07 in progress.
+Plan: [plan.md](plan.md). Status: Approved; RA-08 in progress.
 Every behavior task uses RED -> GREEN -> full regression -> compile -> review
 -> commit. Also run fresh offline smoke/replay after runner, capture or CLI
 changes. Preserve concrete test results in `.audit/` and log decisions in
@@ -125,7 +125,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ## RA-07: Keep malformed and slow clients from starving the bot
 
-- [ ] Complete backpressure, deadlines and simultaneous-client failure handling.
+- [x] Complete backpressure, deadlines and simultaneous-client failure handling.
 - Acceptance: Enforce request/response bytes, 8-client/32-queue caps, nesting,
   5-second deadlines and total projection/buffer budget. Slow or abusive local
   clients cannot prevent stop/risk progress. A timed-out control has explicit

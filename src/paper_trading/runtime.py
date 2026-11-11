@@ -200,10 +200,6 @@ class BotRunner:
             return
         if self._operator_state == 'pausing':
             self._control('operator_pause')
-            # Retain cancellation-resistant callbacks for failure cleanup too.
-            for slot in self.slots:
-                if slot.task is not None:
-                    self._zombies[slot.task] = time.monotonic() + self.runtime['shutdown_grace_seconds']
             await self._stop_callbacks()
             self._operator_state = 'paused'
         if self._resume_requested:
@@ -585,11 +581,14 @@ class BotRunner:
                 slot.task = None
                 slot.timing = None
         for task in tasks:
+            if self._operator_controls:
+                self._zombies[task]=time.monotonic()+self.runtime['shutdown_grace_seconds']
             if not task.done():
                 task.cancel()
         if tasks:
             done, pending = await asyncio.wait(tasks, timeout=self.runtime['shutdown_grace_seconds'])
             for task in done:
+                self._zombies.pop(task,None)
                 if not task.cancelled():
                     task.exception()
             if pending:
@@ -694,6 +693,7 @@ class BotRunner:
                     market = await asyncio.wait_for(feed.get_market(identifier), self.runtime['startup_timeout_seconds'])
                     if market.exchange != feed.exchange:
                         raise ValueError('Metadata venue does not match subscription')
+                    self._observe_operator('metadata',dict(exchange=market.exchange,market_id=market.market_id))
                     self._identity_mapping[f'{feed.exchange}:{identifier}'] = f'{market.exchange}:{market.market_id}'
                     await self._session.add_market(market)
             self._session.recorder.manifest['identity_mapping'] = deepcopy(self._identity_mapping)
