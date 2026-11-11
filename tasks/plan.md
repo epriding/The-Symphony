@@ -61,6 +61,17 @@ to add user accounts, external authentication or public network listening.
 
 ## Per-task execution and evidence
 
+### Authorized archive/replay prerequisite
+
+After RA-03's full regression exposed nondeterministic global history sequence
+numbers, the user approved fixing that existing defect and continuing the plan.
+Version the detail export as history schema 2, using transactional one-based
+sequence numbers within each stream; preserve input capture readers and account
+calculations. Use the preserved failed capture and an interleaving regression
+to verify every payload field and strict new-format hashes. Legacy schema-1
+history hashes are not byte-identical promises for the version-2 output. Resolve
+this prerequisite and repeat full verification before marking RA-03 complete.
+
 After plan approval, commit these planning artifacts as one preparatory commit.
 Record approval in the spec/map status headers in that same commit. Stage only
 those named files. Then, for each behavior task:

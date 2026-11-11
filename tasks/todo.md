@@ -1,6 +1,6 @@
 # Runtime-access tasks
 
-Plan: [plan.md](plan.md). Status: Approved; RA-03 in progress.
+Plan: [plan.md](plan.md). Status: Approved; RA-04 in progress.
 Every behavior task uses RED -> GREEN -> full regression -> compile -> review
 -> commit. Also run fresh offline smoke/replay after runner, capture or CLI
 changes. Preserve concrete test results in `.audit/` and log decisions in
@@ -53,7 +53,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ## RA-03: Start and stop an independent paper session
 
-- [ ] Route explicit lifecycle controls to one owned real runner.
+- [x] Route explicit lifecycle controls to one owned real runner.
 - Acceptance: Concurrent start admits one run, using a new ID/output directory;
   session IDs reject stale controls. Stop uses existing cleanup, terminal state
   remains readable, and unresolved cleanup blocks replacement. Client detach
@@ -64,6 +64,15 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 - Files: src/operator/service.py, src/operator/protocol.py,
   tests/test_bot_service.py, tests/test_bot_control.py.
 - Scope: Medium. Coverage: RA02, RA03, RA07, RA09.
+
+## Authorized prerequisite: deterministic detail export ordering
+
+- [x] Fix the cross-stream sequence defect exposed during RA-03 regression.
+- User authorized this scope extension after reviewing .audit/ra03-debug.md.
+- Evidence: tests/test_bot_history_order.py and its preserved legacy capture
+  fixture; .audit/history-order-focused.log and history-order-regression.log.
+- Result: history export schema 2 uses per-stream transactional ordinals; input
+  capture compatibility and all trade/accounting fields remain verified.
 
 ## RA-04: Read strategy and trade state from the real account
 

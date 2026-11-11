@@ -204,6 +204,17 @@ contain active state plus the configured hot history; use paged archive/history
 artifacts for complete detail. The runner summary never returns growing per-order
 or per-fill arrays. Legacy paper commands retain their established summary shape.
 
+History export schema 2 defines `accounting_order` as a one-based ordinal within
+each detail stream, including correction rows. It is not a cross-stream clock.
+SQLite's global record sequence remains the internal archive paging key. This
+keeps detail hashes independent of unrelated stream flush timing; rollback and
+retry retain transactional sequence behavior. Older history schema 1 exports
+used global SQLite row IDs and could have different detail hashes after replay
+despite identical account and execution data. Existing capture input schemas
+remain readable, but replay emits the current history format: schema-1 history
+hashes are not byte-compatibility promises for a schema-2 replay. Original
+captures and their history artifacts remain read-only.
+
 Schema-3 replay preserves original named settings, controlled time/IDs/RNG and
 recorded dispatch, coalescing, completion, risk and shutdown order. The public
 `replay_bot(capture_directory, output_directory)` uses recorded decisions. The
