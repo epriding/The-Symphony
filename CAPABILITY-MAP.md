@@ -31,7 +31,7 @@ project, not three separately deployed services.
 
 | Module | Spec | State |
 |---|---|---|
-| runtime-access | [SPEC-runtime-access.md](SPEC-runtime-access.md) | Draft; awaiting approval |
+| runtime-access | [SPEC-runtime-access.md](SPEC-runtime-access.md) | Approved; build plan approved |
 | terminal-ui | Not written | Specify after the provider contract is approved |
 | agent-interface | Not written | Specify after the provider contract is approved |
 

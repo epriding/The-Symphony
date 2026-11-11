@@ -1,6 +1,6 @@
 # Spec: runtime-access
 
-Status: Draft; awaiting user approval. Module id: `runtime-access`.
+Status: Approved by the user. Module id: `runtime-access`.
 Depends on: existing `BotRunner`. Provides: the shared contract for
 `terminal-ui` and `agent-interface`; neither client is implemented by this spec.
 

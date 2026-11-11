@@ -1,7 +1,7 @@
 # Spec: trading bot TUI initiative
 
-Status: Draft provider specification awaiting user approval. No implementation
-is authorized by this document alone.
+Status: Provider specification approved by the user, followed by approval of
+the runtime-access build plan. Client specifications remain pending.
 
 ## Objective
 
