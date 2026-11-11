@@ -103,7 +103,7 @@ async def _create_public_feeds(settings, limits, *, timeout):
 
 class BotRunner:
     def __init__(self, config, *, output_directory, feeds=None,
-                 strategy_factories=None, clock=None):
+                 strategy_factories=None, clock=None, operator_controls=False):
         self.config = validate_bot_config(config, require_runtime=True)
         self.output_directory = validate_output_directory(output_directory)
         self.runtime = self.config['runtime']
@@ -127,6 +127,10 @@ class BotRunner:
         self.clock = _SessionClock(clock or RealClock())
         self._used = False
         self._stop = asyncio.Event()
+        self._operator_controls = operator_controls
+        self._operator_state = 'running'
+        self._pause_requested = False
+        self._resume_requested = False
         self._wake = asyncio.Event()
         self._session = None
         self._store = None
@@ -163,6 +167,49 @@ class BotRunner:
     def request_stop(self):
         self._stop.set()
         self._wake.set()
+
+    @property
+    def operator_state(self):
+        return self._operator_state
+
+    def request_pause(self):
+        if not self._operator_controls:
+            raise ValueError('Operator controls require an explicitly enabled runner')
+        if self._stop.is_set() or self._stopping:
+            return
+        self._resume_requested = False
+        if self._operator_state == 'running':
+            self._pause_requested = True
+            self._operator_state = 'pausing'
+            self._wake.set()
+
+    def request_resume(self):
+        if self._stop.is_set() or self._stopping:
+            return
+        if not self._operator_controls:
+            raise ValueError('Operator controls require an explicitly enabled runner')
+        if self._operator_state == 'pausing':
+            raise ValueError('Pause has not quiesced')
+        self._resume_requested = self._operator_state == 'paused'
+        self._wake.set()
+
+    async def _apply_operator_control(self):
+        if self._stop.is_set() or self._stopping:
+            return
+        if self._operator_state == 'pausing':
+            self._control('operator_pause')
+            # Retain cancellation-resistant callbacks for failure cleanup too.
+            for slot in self.slots:
+                if slot.task is not None:
+                    self._zombies[slot.task] = time.monotonic() + self.runtime['shutdown_grace_seconds']
+            await self._stop_callbacks()
+            self._operator_state = 'paused'
+        if self._resume_requested:
+            self._resume_requested = False
+            self._pause_requested = False
+            self._operator_state = 'running'
+            self._dirty = True
+            self._control('operator_resume')
 
     def _control(self, action, **payload):
         self._session.record('runtime_control', dict(action=action, **payload))
@@ -295,7 +342,8 @@ class BotRunner:
             self._last_status = current
 
     async def _notify_and_dispatch(self):
-        if self._stopping or self._stop.is_set() or not self._initial_ready:
+        if (self._stopping or self._stop.is_set() or not self._initial_ready
+                or self._operator_state != 'running'):
             return
         if self._dirty:
             self._dirty = False
@@ -436,8 +484,9 @@ class BotRunner:
             slot.snapshot_bytes = 0
             ready = self._status['strategies'][slot.entry['name']]['ready']
             self._control('completion', strategy=slot.entry['name'], dispatch=slot.dispatch,
-                          decision=result, accepted=ready and not self._stopping and not self._stop.is_set())
-            if ready and not self._stopping and not self._stop.is_set():
+                          decision=result, accepted=ready and not self._stopping and not self._stop.is_set()
+                          and self._operator_state == 'running')
+            if ready and not self._stopping and not self._stop.is_set() and self._operator_state == 'running':
                 for intent in result:
                     await self._session.submit(intent)
 
@@ -460,6 +509,8 @@ class BotRunner:
 
     async def _drive(self, *, allow_work=True):
         self.clock.refresh()
+        if allow_work:
+            await self._apply_operator_control()
         if self._producer_error:
             raise self._producer_error
         # Bound each ingestion batch, then issue one latest notification. Timer
@@ -609,6 +660,9 @@ class BotRunner:
             config.strategy_portfolios = {slot.entry['name']: 'PAPER' for slot in self.slots}
             self._session = PaperSession(config, self.clock, self.output_directory,
                 history_store=self._store, limits=self.limits, runtime_config=self.config)
+            if self._operator_controls:
+                self._session.recorder.schema_version = 4
+                self._session.recorder.manifest['schema_version'] = 4
             self._session.after_public = self._after_public
             if self.feeds is None:
                 if self.runtime['source'] != 'public':

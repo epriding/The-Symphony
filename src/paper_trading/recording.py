@@ -14,7 +14,7 @@ from ..utilities import classes, market_events
 from . import models
 
 SCHEMA_VERSION = 2
-SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3}
+SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3, 4}
 MAX_HEADER_BYTES = 16 * 1024 * 1024
 COMPATIBILITY_EVENT_BYTES = 262144
 TYPES = {
@@ -199,7 +199,7 @@ def read_capture(directory):
     digest = sha256()
     count = 0
     row_limit = None
-    if schema_version == 3:
+    if schema_version in (3, 4):
         from .runtime_config import validate_bot_config
         runtime_config = validate_bot_config(manifest.get('runtime_config'), require_runtime=True)
         row_limit = runtime_config['runtime']['limits']['max_event_bytes']

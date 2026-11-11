@@ -1,6 +1,6 @@
 # Runtime-access tasks
 
-Plan: [plan.md](plan.md). Status: Approved; RA-01 in progress.
+Plan: [plan.md](plan.md). Status: Approved; RA-02 in progress.
 Every behavior task uses RED -> GREEN -> full regression -> compile -> review
 -> commit. Also run fresh offline smoke/replay after runner, capture or CLI
 changes. Preserve concrete test results in `.audit/` and log decisions in
@@ -20,7 +20,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ## RA-01: Pause strategy decisions without suspending account processing
 
-- [ ] Add the runner control boundary and compatible replay behavior.
+- [x] Add the runner control boundary and compatible replay behavior.
 - Acceptance: Pause/resume is independent of readiness; late callback results
   cannot act across the pause barrier, including after resume. Existing fills
   and risk processing continue; stop wins, and uncooperative tasks fail within
