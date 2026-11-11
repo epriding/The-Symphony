@@ -5,13 +5,33 @@ snapshot strategies, shared risk/accounting, public-data observation, local hist
 archival and deterministic replay. Actual trading algorithms and real-money bot
 execution remain future work.
 
-Use the existing virtual environment from the repository root:
+Set up Python 3.12 (required by `polymarket-apis`) and a virtual environment
+from the repository root:
+
+```bash
+python3.12 -m venv venv
+venv/bin/python -m pip install -r requirements.txt
+```
+
+Run the offline checks:
 
 ```bash
 venv/bin/python main.py smoke --output /tmp/bot-smoke
 venv/bin/python main.py replay --capture /tmp/bot-smoke --output /tmp/bot-replay
 venv/bin/python -m pytest -q
 ```
+
+[GitHub Actions CI](.github/workflows/ci.yml) runs on every pull request, pushes
+to `main`, and manual dispatch. It installs and validates dependencies, compiles
+Python sources, runs the full test suite, and checks synthetic smoke/replay without
+venue credentials. JUnit test results are retained as an artifact for seven days,
+including when tests fail. The workflow uses read-only repository permissions.
+
+To block merges on failures, configure a GitHub branch ruleset for `main` requiring
+the **Python 3.12 checks** status check after the workflow's first run. The workflow
+file alone does not enforce branch protection. No deployment target, package build,
+lint configuration, or static type checker is currently defined in this repository;
+those gates can be added when their tooling is established.
 
 Every output directory must be new. Smoke uses synthetic data for both venues and
 requires no credentials. For public observation, copy
