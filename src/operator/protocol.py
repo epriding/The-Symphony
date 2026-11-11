@@ -5,7 +5,7 @@ import math
 MAX_REQUEST = 64 * 1024
 MAX_RESPONSE = 1024 * 1024
 DEADLINE = 5.0
-OPERATIONS = {'overview': set()}
+OPERATIONS = {op: set() for op in ('overview', 'start', 'pause', 'resume', 'stop')}
 
 
 class ProtocolError(ValueError):

@@ -7,7 +7,7 @@ import socket
 
 import pytest
 
-from bot_v1_support import valid_config
+from bot_v1_support import valid_config, ControlledFeed, VENUES, eventually, strategy_config
 
 
 async def connect(service):
@@ -124,5 +124,93 @@ async def test_peer_uid_policy_rejects_foreign_peer(tmp_path, monkeypatch):
         assert await asyncio.wait_for(reader.read(), 2) == b''
         writer.close()
         await writer.wait_closed()
+    finally:
+        await service.close()
+
+
+def controlled_service(tmp_path):
+    from src.bot import BotRunner
+    from src.paper_trading.clock import VirtualClock
+    from bot_v1_support import START
+    clock = VirtualClock(START)
+    feeds = [ControlledFeed(v, clock=clock) for v in VENUES]
+    config = valid_config(strategies=[strategy_config('alpha', factory='quiet')])
+
+    class Quiet:
+        def __init__(self, context):
+            pass
+        async def on_snapshot(self, snapshot):
+            return None
+
+    def factory(config, **kwargs):
+        return BotRunner(config, **kwargs, feeds=feeds, clock=clock,
+            strategy_factories={'quiet': Quiet})
+    return service_type()(config, output_root=tmp_path/'runs', runner_factory=factory), feeds, clock
+
+
+@pytest.mark.asyncio
+async def test_one_run_survives_detach_and_rejects_stale_targets(tmp_path):
+    service, feeds, clock = controlled_service(tmp_path)
+    await service.start(tmp_path/'private/control.sock')
+    try:
+        reader, writer = await connect(service)
+        sid = (await rpc(reader, writer))['service_id']
+        first = await rpc(reader, writer, 'start', service_id=sid)
+        assert first['ok'], first
+        session = first['session_id']
+        duplicate = await rpc(reader, writer, 'start', service_id=sid)
+        assert duplicate['error']['code'] == 'conflict'
+        await eventually(lambda: all(f.started.is_set() for f in feeds))
+        writer.close()
+        await writer.wait_closed()
+        for feed in feeds:
+            await feed.push_book()
+        await eventually(lambda: service.runner.status['phase'] == 'ready')
+        reader, writer = await connect(service)
+        resumed_view = await rpc(reader, writer, service_id=sid, session_id=session)
+        assert resumed_view['session_id'] == session
+        assert resumed_view['data']['lifecycle'] == 'ready'
+        wrong = await rpc(reader, writer, 'stop', service_id=sid, session_id='foreign')
+        assert wrong['error']['code'] == 'conflict'
+        assert not service.runner._stop.is_set()
+        paused = await rpc(reader, writer, 'pause', service_id=sid, session_id=session)
+        assert paused['ok'], paused
+        await eventually(lambda: service.runner.operator_state == 'paused')
+        resumed = await rpc(reader, writer, 'resume', service_id=sid, session_id=session)
+        assert resumed['ok']
+        await eventually(lambda: service.runner.operator_state == 'running')
+        stopped = await rpc(reader, writer, 'stop', service_id=sid, session_id=session)
+        assert stopped['ok']
+        await eventually(lambda: service.session_task.done())
+        terminal = await rpc(reader, writer, service_id=sid, session_id=session)
+        assert terminal['data']['lifecycle'] == 'stopped'
+        assert (service.runner.output_directory/'manifest.json').exists()
+        writer.close()
+        await writer.wait_closed()
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_two_concurrent_smoke_starts_admit_one_and_next_run_is_fresh(tmp_path):
+    service = service_type()(output_root=tmp_path/'runs', smoke=True)
+    await service.start(tmp_path/'private/control.sock')
+    try:
+        pairs = [await connect(service) for _ in range(2)]
+        results = await asyncio.gather(*(rpc(r,w,'start',service_id=service.service_id)
+            for r,w in pairs))
+        assert sum(r['ok'] for r in results) == 1
+        first = service.session_id
+        await eventually(lambda: service.session_task.done())
+        assert service.runner.status['phase'] == 'stopped'
+        r,w = pairs[0]
+        second = await rpc(r,w,'start',service_id=service.service_id,session_id=first)
+        assert second['ok'], second
+        assert service.session_id != first
+        await eventually(lambda: service.session_task.done())
+        assert len(list((tmp_path/'runs').iterdir())) == 2
+        for r,w in pairs:
+            w.close()
+            await w.wait_closed()
     finally:
         await service.close()

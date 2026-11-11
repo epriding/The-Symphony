@@ -12,6 +12,7 @@ from uuid import uuid4
 from .protocol import (
     DEADLINE, MAX_REQUEST, ProtocolError, decode_request, encode_response,
 )
+from ..bot import BotRunner
 from ..paper_trading.runtime_config import validate_bot_config
 
 
@@ -39,8 +40,19 @@ def private_directory(path):
 
 
 class ControlService:
-    def __init__(self, config, *, output_root):
+    def __init__(self, config=None, *, output_root, smoke=False, runner_factory=None):
+        if smoke:
+            if config is not None:
+                raise ValueError('Choose config or smoke, not both')
+            from ..strategies.smoke import smoke_fixture
+            config = smoke_fixture()[0]
         self.config = validate_bot_config(config, require_runtime=True)
+        self.smoke = smoke
+        self._runner_factory = runner_factory or BotRunner
+        self.runner = None
+        self.session_task = None
+        self._session_error = None
+        self._cleanup_blocked = False
         self.output_root = checked_path(output_root)
         self.service_id = str(uuid4())
         self.session_id = None
@@ -149,12 +161,76 @@ class ControlService:
                 self._queue.task_done()
 
     async def _execute(self, request):
-        if request['service_id'] not in (None, self.service_id) or request['session_id'] is not None:
+        op = request['op']
+        discovery = op == 'overview' and request['service_id'] is None and request['session_id'] is None
+        if not discovery and (request['service_id'] != self.service_id or
+                request['session_id'] != self.session_id):
             raise ProtocolError('conflict', 'Service or session target changed')
-        return dict(lifecycle='idle', reason='', operator_state='running',
+        if op == 'overview':
+            return self._overview()
+        active = self.session_task is not None and not self.session_task.done()
+        if op == 'start':
+            if active or self._cleanup_blocked:
+                raise ProtocolError('conflict', 'A session is active or cleanup remains unresolved')
+            try:
+                private_directory(self.output_root)
+                session_id = str(uuid4())
+                output = checked_path(self.output_root/session_id)
+                options = dict(output_directory=output, operator_controls=True)
+                config = self.config
+                if self.smoke:
+                    from ..strategies.smoke import smoke_fixture
+                    config, options['feeds'], options['clock'] = smoke_fixture()
+                runner = self._runner_factory(config, **options)
+            except ValueError:
+                raise ProtocolError('invalid_request', 'Cannot start configured session; check configuration and output root') from None
+            self.runner, self.session_id = runner, session_id
+            self._session_error = None
+            self.revision += 1
+            self.session_task = asyncio.create_task(self._run_session(runner))
+        elif op == 'stop' and self.session_task is not None:
+            if active:
+                self.runner.request_stop()
+        elif not active:
+            raise ProtocolError('conflict', 'No active session')
+        elif op == 'pause':
+            if self.runner._stop.is_set():
+                raise ProtocolError('conflict', 'Session is stopping')
+            self.runner.request_pause()
+        elif op == 'resume':
+            if self.runner._stop.is_set() or self.runner.operator_state == 'pausing':
+                raise ProtocolError('conflict', 'Session is stopping or pause has not quiesced')
+            self.runner.request_resume()
+        self.revision += 1
+        overview = self._overview()
+        return dict(accepted=True, lifecycle=overview['lifecycle'],
+                    operator_state=overview['operator_state'])
+
+    async def _run_session(self, runner):
+        try:
+            if self.config['runtime']['source'] == 'public':
+                from dotenv import load_dotenv
+                load_dotenv()
+            await runner.run()
+        except BaseException as error:
+            # The runner owns detailed redacted diagnostics and capture outcome.
+            # Keep this task observed without failing the independent service.
+            self._session_error = type(error).__name__
+        finally:
+            self._cleanup_blocked = (
+                bool(runner._session and runner._unresolved())
+                or any(not task.done() for task in (*runner._tasks, *runner._zombies))
+                or bool(runner._store and runner._store._thread.is_alive()))
+            self.revision += 1
+
+    def _overview(self):
+        status = self.runner.status if self.runner else {'phase':'idle', 'reason':''}
+        lifecycle = 'failed' if self._session_error else status['phase']
+        return dict(lifecycle=lifecycle, reason=status['reason'] or self._session_error or '',
+            operator_state=self.runner.operator_state if self.runner else 'running',
             source=self.config['runtime']['source'],
             observe_only=self.config['runtime']['observe_only'],
-            live_execution_supported=False)
+            live_execution_supported=False, cleanup_unresolved=self._cleanup_blocked)
 
     def _remove_owned_socket(self):
         if self.socket_path is not None and self._socket_identity:
@@ -177,4 +253,19 @@ class ControlService:
             self._worker.cancel()
             with suppress(asyncio.CancelledError):
                 await self._worker
+        if self.session_task and not self.session_task.done():
+            self.runner.request_stop()
+            runtime = self.config['runtime']
+            timeout = (runtime['startup_timeout_seconds'] * len(self.config['feeds'])
+                       + 4*runtime['shutdown_grace_seconds'] + 2)
+            try:
+                await asyncio.wait_for(asyncio.shield(self.session_task), timeout)
+            except asyncio.TimeoutError:
+                self.session_task.cancel()
+                done, pending = await asyncio.wait({self.session_task},
+                    timeout=runtime['shutdown_grace_seconds']+1)
+                if pending:
+                    self._cleanup_blocked = True
         self._remove_owned_socket()
+        if self._cleanup_blocked:
+            raise RuntimeError('Service cleanup remains unresolved')
