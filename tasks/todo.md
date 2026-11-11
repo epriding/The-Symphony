@@ -1,6 +1,6 @@
 # Runtime-access tasks
 
-Plan: [plan.md](plan.md). Status: Approved; RA-00 in progress.
+Plan: [plan.md](plan.md). Status: Approved; RA-01 in progress.
 Every behavior task uses RED -> GREEN -> full regression -> compile -> review
 -> commit. Also run fresh offline smoke/replay after runner, capture or CLI
 changes. Preserve concrete test results in `.audit/` and log decisions in
@@ -8,7 +8,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ## RA-00: Establish an executable baseline
 
-- [ ] Restore Python environment and verify the unmodified application.
+- [x] Restore Python environment and verify the unmodified application.
 - Acceptance: Isolated Python 3.12 environment has the existing requirements;
   pip check, full pytest, compileall and fresh smoke/replay have real recorded
   results. No project dependencies or tests were removed to make setup pass.
