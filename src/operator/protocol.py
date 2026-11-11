@@ -6,6 +6,7 @@ MAX_REQUEST = 64 * 1024
 MAX_RESPONSE = 1024 * 1024
 DEADLINE = 5.0
 OPERATIONS = {op: set() for op in ('overview', 'start', 'pause', 'resume', 'stop')}
+OPERATIONS.update(strategies=set(), strategy={'name','collection'})
 
 
 class ProtocolError(ValueError):
@@ -74,6 +75,10 @@ def decode_request(frame):
         invalid('Unknown operation')
     if not isinstance(value['params'], dict) or set(value['params']) - OPERATIONS[op]:
         invalid('Unexpected operation parameters')
+    if op == 'strategy':
+        bounded_text(value['params'].get('name'),256)
+        if value['params'].get('collection') not in (None,'orders','positions','fills','events'):
+            invalid('Unknown strategy collection')
     return value
 
 

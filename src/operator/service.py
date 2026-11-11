@@ -12,6 +12,7 @@ from uuid import uuid4
 from .protocol import (
     DEADLINE, MAX_REQUEST, ProtocolError, decode_request, encode_response,
 )
+from .observations import Observations, safe_text
 from ..bot import BotRunner
 from ..paper_trading.runtime_config import validate_bot_config
 
@@ -64,6 +65,8 @@ class ControlService:
         self._queue = asyncio.Queue(maxsize=32)
         self._worker = None
         self._closing = False
+        self.observations = Observations(self.config)
+        self._observation_error = None
 
     async def start(self, path):
         if self._server is not None or self._closing:
@@ -168,6 +171,15 @@ class ControlService:
             raise ProtocolError('conflict', 'Service or session target changed')
         if op == 'overview':
             return self._overview()
+        if op in ('strategies','strategy'):
+            if self._observation_error:
+                raise ProtocolError('limit_exceeded','Current observation is unavailable')
+            if op == 'strategies':
+                return self.observations.page(self.observations.strategies.values())
+            name=request['params']['name']
+            if name not in self.observations.strategies:
+                raise ProtocolError('not_found','Unknown strategy')
+            return self.observations.read(name,request['params'].get('collection'))
         active = self.session_task is not None and not self.session_task.done()
         if op == 'start':
             if active or self._cleanup_blocked:
@@ -176,7 +188,8 @@ class ControlService:
                 private_directory(self.output_root)
                 session_id = str(uuid4())
                 output = checked_path(self.output_root/session_id)
-                options = dict(output_directory=output, operator_controls=True)
+                options = dict(output_directory=output, operator_controls=True,
+                    operator_observer=self._observe)
                 config = self.config
                 if self.smoke:
                     from ..strategies.smoke import smoke_fixture
@@ -185,6 +198,8 @@ class ControlService:
             except ValueError:
                 raise ProtocolError('invalid_request', 'Cannot start configured session; check configuration and output root') from None
             self.runner, self.session_id = runner, session_id
+            self.observations = Observations(config)
+            self._observation_error = None
             self._session_error = None
             self.revision += 1
             self.session_task = asyncio.create_task(self._run_session(runner))
@@ -206,6 +221,15 @@ class ControlService:
         return dict(accepted=True, lifecycle=overview['lifecycle'],
                     operator_state=overview['operator_state'])
 
+    def _observe(self, runner, kind, payload):
+        try:
+            if self.observations.observe(runner,kind,payload):
+                self.revision += 1
+        except (ValueError,KeyError,ArithmeticError):
+            # An inspection failure must not become an account mutation or
+            # interrupt market processing. Reads report unavailable explicitly.
+            self._observation_error = True
+
     async def _run_session(self, runner):
         try:
             if self.config['runtime']['source'] == 'public':
@@ -222,15 +246,26 @@ class ControlService:
                 or any(not task.done() for task in (*runner._tasks, *runner._zombies))
                 or bool(runner._store and runner._store._thread.is_alive()))
             self.revision += 1
+            self._observe(runner,'final',{})
 
     def _overview(self):
         status = self.runner.status if self.runner else {'phase':'idle', 'reason':''}
         lifecycle = 'failed' if self._session_error else status['phase']
-        return dict(lifecycle=lifecycle, reason=status['reason'] or self._session_error or '',
+        return dict(lifecycle=lifecycle, reason=safe_text(status['reason'] or self._session_error or ''),
             operator_state=self.runner.operator_state if self.runner else 'running',
             source=self.config['runtime']['source'],
             observe_only=self.config['runtime']['observe_only'],
-            live_execution_supported=False, cleanup_unresolved=self._cleanup_blocked)
+            live_execution_supported=False, cleanup_unresolved=self._cleanup_blocked,
+            strategy_count=len(self.observations.strategies),
+            strategy_ready_count=sum(s['ready'] for s in self.observations.strategies.values()),
+            venue_count=len(self.config['feeds']),
+            venue_ready_count=sum(v['ready'] for v in self.observations.venues.values()),
+            active_order_count=len(self.observations.orders),
+            position_count=self.observations.position_count,
+            market_time=self.observations.market_time,snapshot_at=self.observations.snapshot_at,
+            observation_available=self._observation_error is None,
+            capture_id=self.config['execution'].get('session_id'),
+            capture_directory=str(self.runner.output_directory) if self.runner else None)
 
     def _remove_owned_socket(self):
         if self.socket_path is not None and self._socket_identity:

@@ -103,7 +103,8 @@ async def _create_public_feeds(settings, limits, *, timeout):
 
 class BotRunner:
     def __init__(self, config, *, output_directory, feeds=None,
-                 strategy_factories=None, clock=None, operator_controls=False):
+                 strategy_factories=None, clock=None, operator_controls=False,
+                 operator_observer=None):
         self.config = validate_bot_config(config, require_runtime=True)
         self.output_directory = validate_output_directory(output_directory)
         self.runtime = self.config['runtime']
@@ -128,6 +129,7 @@ class BotRunner:
         self._used = False
         self._stop = asyncio.Event()
         self._operator_controls = operator_controls
+        self._operator_observer = operator_observer
         self._operator_state = 'running'
         self._pause_requested = False
         self._resume_requested = False
@@ -213,6 +215,11 @@ class BotRunner:
 
     def _control(self, action, **payload):
         self._session.record('runtime_control', dict(action=action, **payload))
+        self._observe_operator('control', dict(action=action, **payload))
+
+    def _observe_operator(self, kind, payload):
+        if self._operator_observer is not None:
+            self._operator_observer(self, kind, payload)
 
     async def _after_public(self, envelope):
         self._revision += 1
@@ -540,6 +547,7 @@ class BotRunner:
                     self._event_bytes -= item[2]
                 self._queue.task_done()
         await self._session.advance(self.clock())
+        self._observe_operator('tick', {})
         await self._compact()
         self._check_memory()
         self._readiness()
@@ -663,6 +671,12 @@ class BotRunner:
             if self._operator_controls:
                 self._session.recorder.schema_version = 4
                 self._session.recorder.manifest['schema_version'] = 4
+            if self._operator_observer is not None:
+                original_sink = self._session.engine.audit_sink
+                def observe_execution(row):
+                    original_sink(row)
+                    self._observe_operator('execution', row)
+                self._session.engine.audit_sink = observe_execution
             self._session.after_public = self._after_public
             if self.feeds is None:
                 if self.runtime['source'] != 'public':
