@@ -1,6 +1,6 @@
 # Runtime-access tasks
 
-Plan: [plan.md](plan.md). Status: Approved; RA-02 in progress.
+Plan: [plan.md](plan.md). Status: Approved; RA-03 in progress.
 Every behavior task uses RED -> GREEN -> full regression -> compile -> review
 -> commit. Also run fresh offline smoke/replay after runner, capture or CLI
 changes. Preserve concrete test results in `.audit/` and log decisions in
@@ -34,7 +34,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ## RA-02: Attach to an idle private service
 
-- [ ] Serve a real local overview without creating a bot session.
+- [x] Serve a real local overview without creating a bot session.
 - Acceptance: Strict versioned/framed request validation works over a private
   Unix socket; idle overview is bounded and does not load credentials or start
   feeds. Reject foreign peers, insecure paths, existing sockets and malformed
@@ -48,7 +48,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ### Checkpoint: runner and idle attach boundary
 
-- [ ] Full regression/compile and pause/replay checks pass; inspect the socket
+- [x] Full regression/compile and pause/replay checks pass; inspect the socket
   and runner ownership boundary before adding session controls.
 
 ## RA-03: Start and stop an independent paper session
