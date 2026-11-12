@@ -2,6 +2,7 @@
 import json
 import math
 import unicodedata
+from typing import Never
 
 from ..paper_trading.runtime_config import retained_bytes
 
@@ -22,16 +23,17 @@ OPERATIONS.update(findings={'name','limit','cursor'},
 
 
 class ProtocolError(ValueError):
-    def __init__(self, code, message):
+    def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
 
 
-def invalid(message='Invalid request'):
+def invalid(message: str = 'Invalid request') -> Never:
     raise ProtocolError('invalid_request', message)
 
 
-def bounded_text(value, limit, *, nullable=False, identifier=False):
+def bounded_text(value: object, limit: int, *, nullable: bool = False,
+                 identifier: bool = False) -> str | None:
     if nullable and value is None:
         return value
     if not isinstance(value, str) or not value:
@@ -67,7 +69,7 @@ def _validate_tree(value, depth=0):
             _validate_tree(child, depth+1)
 
 
-def decode_request(frame):
+def decode_request(frame: bytes) -> dict:
     if len(frame) > MAX_REQUEST or not frame.endswith(b'\n'):
         raise ProtocolError('limit_exceeded', 'Request frame exceeds limit or is incomplete')
     try:
@@ -118,7 +120,7 @@ def decode_request(frame):
     return value
 
 
-def encode_response(response):
+def encode_response(response: dict) -> bytearray:
     if retained_bytes(response)>MAX_RESPONSE_OBJECT:
         raise ProtocolError('limit_exceeded','Response object exceeds memory limit; request a smaller page')
     payload=bytearray()

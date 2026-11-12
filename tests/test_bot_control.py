@@ -214,3 +214,52 @@ async def test_service_stop_retains_uncooperative_callback_as_unresolved_cleanup
             await asyncio.gather(*service.runner._zombies,return_exceptions=True)
         with suppress(RuntimeError):
             await service.close()
+
+
+@pytest.mark.asyncio
+async def test_pausing_keeps_market_and_risk_progress_while_callback_cleanup_is_pending(tmp_path):
+    config=valid_config(strategies=[strategy_config('alpha',factory='cleanup')])
+    config['runtime']['shutdown_grace_seconds']=.5
+    clock=VirtualClock(START)
+    feeds=[ControlledFeed(v,clock=clock) for v in VENUES]
+    entered,cleaning,release=asyncio.Event(),asyncio.Event(),asyncio.Event()
+    risk=[]
+    def observer(runner,kind,payload):
+        if kind=='control' and payload['action']=='risk_tick':
+            risk.append(runner.clock())
+    def factory(context):
+        class Cleanup:
+            async def on_snapshot(self,snapshot):
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    cleaning.set()
+                    await release.wait()
+                return None
+        return Cleanup()
+    runner=BotRunner(config,output_directory=tmp_path/'capture',feeds=feeds,clock=clock,
+        strategy_factories={'cleanup':factory},operator_controls=True,operator_observer=observer)
+    task=asyncio.create_task(runner.run())
+    try:
+        await eventually(lambda: all(f.started.is_set() for f in feeds))
+        for feed in feeds:
+            await feed.push_book()
+        await asyncio.wait_for(entered.wait(),2)
+        runner.request_pause()
+        await asyncio.wait_for(cleaning.wait(),2)
+        prior_revision,prior_risk=runner._revision,len(risk)
+        clock.advance(START+.05)
+        for feed in feeds:
+            await feed.push_book()
+        await eventually(lambda: runner._revision>prior_revision and len(risk)>prior_risk,timeout=.2)
+        assert runner.operator_state=='pausing' and not release.is_set()
+        release.set()
+        await eventually(lambda: runner.operator_state=='paused')
+        runner.request_stop()
+        assert (await asyncio.wait_for(task,2))['submitted']==0
+    finally:
+        release.set()
+        if not task.done():
+            runner.request_stop()
+        await asyncio.gather(task,return_exceptions=True)

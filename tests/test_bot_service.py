@@ -443,6 +443,14 @@ def test_response_limit_is_enforced_for_repeated_references_without_a_full_unbou
         tracemalloc.stop()
 
 
+def test_kernel_peer_uid_is_decoded_as_unsigned():
+    import struct
+    from types import SimpleNamespace
+    peer=SimpleNamespace(getsockopt=lambda *args:struct.pack('iII',123,2**32-2,100))
+    writer=SimpleNamespace(get_extra_info=lambda key:peer)
+    assert service_type()._peer_uid(writer)==2**32-2
+
+
 @pytest.mark.asyncio
 async def test_resolved_metadata_must_fit_control_identifiers_before_activation(tmp_path,monkeypatch):
     from dataclasses import replace
@@ -506,6 +514,9 @@ async def test_serve_cli_is_idle_until_start_and_outlives_its_finite_session(tmp
         assert not path.exists()
         manifest=next((tmp_path/'runs').glob('*/manifest.json'))
         assert json.loads(manifest.read_text())['finalized'] is True
+        sources=json.loads(manifest.read_text())['provenance']['source_fingerprint']['files']
+        assert {'src/operator/service.py','src/operator/protocol.py',
+            'src/operator/observations.py'}<=sources.keys()
     finally:
         if writer:
             writer.close()
@@ -626,3 +637,114 @@ async def test_real_killed_client_can_reattach_to_same_active_trading_process(tm
                     await asyncio.to_thread(process.wait)
                 process.stdout.close()
                 process.stderr.close()
+
+
+@pytest.mark.asyncio
+async def test_timed_out_encoder_keeps_its_reservation_until_the_worker_finishes(tmp_path,monkeypatch):
+    import threading
+    import src.operator.service as module
+    original=module.encode_response
+    entered,release=threading.Event(),threading.Event()
+    def blocked(response):
+        if response.get('request_id')=='blocked':
+            entered.set()
+            release.wait(5)
+        return original(response)
+    monkeypatch.setattr(module,'encode_response',blocked)
+    monkeypatch.setattr(module,'DEADLINE',.05)
+    service=service_type()(valid_config(),output_root=tmp_path/'runs')
+    await service.start(tmp_path/'private/control.sock')
+    pair=None
+    try:
+        pair=await connect(service)
+        r,w=pair
+        w.write((json.dumps(dict(version=1,request_id='blocked',op='overview',params={},
+            service_id=None,session_id=None))+'\n').encode())
+        await w.drain()
+        await eventually(entered.is_set)
+        assert await asyncio.wait_for(r.read(),1)==b''
+        assert service._query_leases==1
+        release.set()
+        await eventually(lambda: service._query_leases==0)
+    finally:
+        release.set()
+        if pair:
+            pair[1].close()
+        await service.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('blocker',['callback','artifact'])
+async def test_cli_failed_cleanup_exits_one_without_releasing_the_blocker(tmp_path,blocker):
+    path=tmp_path/'private/control.sock'
+    prefix=HOLDING_SERVICE.split('async def run():',1)[0]
+    script=prefix+r'''
+import runpy,threading
+import src.operator.service as module
+module.DEADLINE=.2
+Original=module.ControlService
+root=Path(sys.argv[2])
+blocker=sys.argv[3]
+class Stubborn:
+    def __init__(self,context):
+        pass
+    async def on_snapshot(self,snapshot):
+        (root/'entered').write_text('callback')
+        while True:
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                pass
+def unclean_factory(config,**kwargs):
+    config,feeds,clock=smoke_fixture()
+    config['runtime']['shutdown_grace_seconds']=.03
+    config['runtime']['strategy_timeout_seconds']=3600
+    factories={'smoke-v1':Stubborn} if blocker=='callback' else {}
+    return BotRunner(config,**kwargs,feeds=[HoldingFeed(f) for f in feeds],clock=clock,
+        strategy_factories=factories)
+def build(config=None,*,output_root,smoke=False):
+    config=smoke_fixture()[0]
+    config['runtime']['shutdown_grace_seconds']=.03
+    service=Original(config,output_root=output_root,runner_factory=unclean_factory)
+    if blocker=='artifact':
+        def never_returns(row):
+            (root/'entered').write_text('artifact')
+            threading.Event().wait()
+        service._append_finding=never_returns
+    return service
+module.ControlService=build
+sys.argv=['main.py','serve','--smoke','--socket',sys.argv[1],'--output-root',str(root)]
+runpy.run_path('main.py',run_name='__main__')
+'''
+    process=subprocess.Popen([sys.executable,'-u','-c',script,str(path),str(tmp_path/'runs'),blocker],
+        cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    pair=None
+    publishing=None
+    try:
+        ready=await asyncio.wait_for(asyncio.to_thread(process.stderr.readline),5)
+        assert 'ready' in ready.lower(),ready
+        pair=await asyncio.open_unix_connection(str(path))
+        hello=await rpc(*pair)
+        started=await rpc(*pair,'start',service_id=hello['service_id'])
+        assert started['ok'],started
+        if blocker=='artifact':
+            publishing=asyncio.create_task(rpc(*pair,'publish_finding',params={
+                'author':'test','severity':'info','message':'blocked'},
+                service_id=hello['service_id'],session_id=started['session_id']))
+        await eventually(lambda: (tmp_path/'runs/entered').exists())
+        process.terminate()
+        await asyncio.wait_for(asyncio.to_thread(process.wait),3)
+        assert process.returncode==1
+        if blocker=='callback':
+            manifest=next((tmp_path/'runs').glob('*/manifest.json'))
+            assert json.loads(manifest.read_text())['finalized'] is False
+    finally:
+        if process.poll() is None:
+            process.kill()
+            await asyncio.to_thread(process.wait)
+        if pair:
+            pair[1].close()
+        if publishing:
+            await asyncio.gather(publishing,return_exceptions=True)
+        process.stdout.close()
+        process.stderr.close()

@@ -28,6 +28,8 @@ TYPES = {
 # arbitrary working-tree paths or environment values for capture provenance.
 PROVENANCE_PATHS = (
     'main.py', 'src/bot.py',
+    'src/operator/__init__.py', 'src/operator/protocol.py',
+    'src/operator/service.py', 'src/operator/observations.py',
     'src/paper_trading/runtime.py', 'src/paper_trading/runtime_config.py',
     'src/paper_trading/session.py', 'src/paper_trading/recording.py',
     'src/paper_trading/replay.py', 'src/paper_trading/history.py',

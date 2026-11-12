@@ -1,5 +1,7 @@
 """Explicit local service; clients never own the bot's process lifetime."""
 import asyncio
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 import os
 from pathlib import Path
@@ -18,7 +20,7 @@ from ..bot import BotRunner
 from ..paper_trading.runtime_config import validate_bot_config
 
 
-def checked_path(path):
+def checked_path(path: str | Path) -> Path:
     path = Path(os.path.abspath(path))
     for node in (path, *path.parents):
         if node.is_symlink():
@@ -26,7 +28,7 @@ def checked_path(path):
     return path
 
 
-def private_directory(path):
+def private_directory(path: str | Path) -> Path:
     path = checked_path(path)
     missing = []
     parent = path
@@ -42,7 +44,8 @@ def private_directory(path):
 
 
 class ControlService:
-    def __init__(self, config=None, *, output_root, smoke=False, runner_factory=None):
+    def __init__(self, config: dict | None = None, *, output_root: str | Path,
+                 smoke: bool = False, runner_factory: Callable | None = None) -> None:
         if smoke:
             if config is not None:
                 raise ValueError('Choose config or smoke, not both')
@@ -66,6 +69,9 @@ class ControlService:
         self._clients = {}
         self._queue = asyncio.Queue(maxsize=32)
         self._worker = None
+        self._encoding_pool=ThreadPoolExecutor(max_workers=8,thread_name_prefix='bot-control')
+        self._encodings=set()
+        self._loop=None
         self._control_queue = asyncio.Queue(maxsize=32)
         self._control_worker = None
         self._queued = 0
@@ -80,12 +86,13 @@ class ControlService:
         self._finding_identity = None
         self._finding_failed = False
 
-    async def start(self, path):
+    async def start(self, path: str | Path) -> None:
         if not hasattr(socket,'SO_PEERCRED'):
             raise ValueError('The local service requires Linux peer credentials')
         if self._server is not None or self._closing:
             raise ValueError('Service is already started or closed')
         self.socket_path = checked_path(path)
+        self._loop=asyncio.get_running_loop()
         private_directory(self.socket_path.parent)
         if self.socket_path.exists() or self.socket_path.is_symlink():
             raise ValueError('Socket path already exists; refusing takeover')
@@ -107,9 +114,9 @@ class ControlService:
             raise
 
     @staticmethod
-    def _peer_uid(writer):
+    def _peer_uid(writer: asyncio.StreamWriter) -> int:
         peer = writer.get_extra_info('socket')
-        return struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[1]
+        return struct.unpack('iII', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[1]
 
     def _accept(self, reader, writer):
         try:
@@ -136,11 +143,41 @@ class ControlService:
         self._query_leases+=1
         self.memory_highwater=max(self.memory_highwater,projected)
 
+    def _on_loop(self,callback,*args):
+        try:
+            self._loop.call_soon_threadsafe(callback,*args)
+        except RuntimeError:
+            pass  # An abandoned embedding loop cannot accept new requests.
+
+    def _encoding_done(self,future):
+        self._encodings.discard(future)
+
+    def _encode(self,response):
+        if len(self._encodings)>=8:
+            raise ProtocolError('busy','Encoder capacity is occupied; observe before repeating controls')
+        future=self._encoding_pool.submit(encode_response,response)
+        self._encodings.add(future)
+        future.add_done_callback(lambda done:self._on_loop(self._encoding_done,done))
+        return future
+
+    def _release_query(self):
+        self._query_leases-=1
+
+    def requires_forced_exit(self) -> bool:
+        """Library close reports failure; only the standalone CLI may exit."""
+        return (bool(self.session_task and not self.session_task.done())
+            or bool(self._publication and not self._publication.done())
+            or any(not future.done() for future in self._encodings)
+            or bool(self.runner and any(not task.done() for task in self.runner._zombies)))
+
     async def _connection(self, reader, writer):
         try:
             while not self._closing:
                 request = None
                 leased=False
+                encoding=None
+                wrapped=None
+                response=raw_response=future=raw=None
                 try:
                     try:
                         raw = await asyncio.wait_for(reader.readline(), DEADLINE)
@@ -163,14 +200,25 @@ class ControlService:
                     except ValueError:  # StreamReader rejected an oversized line.
                         return
                     try:
-                        raw_response = await asyncio.wait_for(asyncio.to_thread(encode_response, response), DEADLINE)
+                        encoding=self._encode(response)
+                        wrapped=asyncio.wrap_future(encoding)
+                        wrapped.add_done_callback(lambda done:done.exception() if not done.cancelled() else None)
+                        raw_response = await asyncio.wait_for(asyncio.shield(wrapped), DEADLINE)
                     except ProtocolError as error:
                         raw_response = encode_response(self._envelope(request, error=error))
                     writer.write(raw_response)
                     await asyncio.wait_for(writer.drain(), DEADLINE)
                 finally:
+                    # Drop completed response graphs before making the reserve
+                    # available to another reader. A timed-out thread still
+                    # owns its input/result until the actual worker finishes.
+                    response=raw_response=future=raw=wrapped=request=None
                     if leased:
-                        self._query_leases-=1
+                        if encoding is not None and not encoding.done():
+                            encoding.add_done_callback(lambda done:self._on_loop(self._release_query))
+                        else:
+                            self._release_query()
+                    encoding=None
         except (OSError, asyncio.TimeoutError):
             pass
         finally:
@@ -209,6 +257,7 @@ class ControlService:
             finally:
                 self._queued-=1
                 queue.task_done()
+                request=future=data=response=None
 
     async def _execute(self, request):
         op = request['op']
@@ -403,7 +452,7 @@ class ControlService:
                 if (info.st_dev, info.st_ino) == self._socket_identity and stat.S_ISSOCK(info.st_mode):
                     self.socket_path.unlink()
 
-    async def close(self):
+    async def close(self) -> None:
         self._closing = True
         close_failed=False
         if self._server:
@@ -434,6 +483,13 @@ class ControlService:
                 pass
             except asyncio.TimeoutError:
                 close_failed=True
+        if self._encodings:
+            encoded=[asyncio.wrap_future(future) for future in self._encodings]
+            for future in encoded:
+                future.add_done_callback(lambda done:done.exception() if not done.cancelled() else None)
+            _,pending=await asyncio.wait(encoded,timeout=DEADLINE)
+            close_failed=close_failed or bool(pending)
+        self._encoding_pool.shutdown(wait=False,cancel_futures=True)
         if self.session_task and not self.session_task.done():
             self.runner.request_stop()
             runtime = self.config['runtime']

@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import json
+import os
 import signal
 import sys
 
@@ -9,7 +10,7 @@ from src.bot import BotRunner, load_bot_config, replay_bot
 from src.utilities.logger import redact
 
 
-async def _serve(args):
+async def _serve(args: argparse.Namespace, *, force_exit_on_unclean: bool = False) -> None:
     from src.operator.service import ControlService
     if args.smoke:
         service=ControlService(smoke=True,output_root=args.output_root)
@@ -34,7 +35,18 @@ async def _serve(args):
         await stopped.wait()
     finally:
         try:
-            await service.close()
+            try:
+                await service.close()
+            except BaseException:
+                if force_exit_on_unclean and service.requires_forced_exit():
+                    # asyncio.run otherwise joins cancellation-resistant tasks
+                    # or blocked executor threads indefinitely. This policy is
+                    # restricted to the standalone service process, after its
+                    # normal cleanup deadlines; the library never exits callers.
+                    print('Runtime failed: control-service cleanup incomplete; exiting with failure.',
+                        file=sys.stderr,flush=True)
+                    os._exit(1)
+                raise
         finally:
             for sig in installed:
                 loop.remove_signal_handler(sig)
@@ -110,7 +122,7 @@ def main(argv=None):
     try:
         args=parser.parse_args(argv)
         if args.command=='serve':
-            asyncio.run(_serve(args))
+            asyncio.run(_serve(args,force_exit_on_unclean=True))
             return 0
         summary = asyncio.run(_execute(args))
         print(json.dumps({key: summary[key] for key in ('session_id', 'submitted', 'accounts', 'assumptions')}, indent=2))

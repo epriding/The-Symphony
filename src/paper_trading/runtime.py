@@ -131,7 +131,7 @@ class BotRunner:
         self._operator_controls = operator_controls
         self._operator_observer = operator_observer
         self._operator_state = 'running'
-        self._pause_requested = False
+        self._pause_cancellation_started = False
         self._resume_requested = False
         self._wake = asyncio.Event()
         self._session = None
@@ -181,8 +181,8 @@ class BotRunner:
             return
         self._resume_requested = False
         if self._operator_state == 'running':
-            self._pause_requested = True
             self._operator_state = 'pausing'
+            self._pause_cancellation_started = False
             self._wake.set()
 
     def request_resume(self):
@@ -198,13 +198,21 @@ class BotRunner:
     async def _apply_operator_control(self):
         if self._stop.is_set() or self._stopping:
             return
-        if self._operator_state == 'pausing':
+        if self._operator_state == 'pausing' and not self._pause_cancellation_started:
             self._control('operator_pause')
-            await self._stop_callbacks()
-            self._operator_state = 'paused'
+            self._pause_cancellation_started = True
+            # Initiate cancellation at the barrier, but do not suspend the
+            # market/risk driver while async callback cleanup acknowledges it.
+            for slot in self.slots:
+                slot.pending = False
+                if slot.task is not None:
+                    task, slot.task = slot.task, None
+                    slot.timing = None
+                    self._zombies[task] = time.monotonic()+self.runtime['shutdown_grace_seconds']
+                    if not task.done():
+                        task.cancel()
         if self._resume_requested:
             self._resume_requested = False
-            self._pause_requested = False
             self._operator_state = 'running'
             self._dirty = True
             self._control('operator_resume')
@@ -461,6 +469,10 @@ class BotRunner:
                 del self._zombies[task]
             elif time.monotonic() >= self._zombies[task]:
                 raise RuntimeError('strategy cancellation exceeded shutdown grace')
+        if self._operator_state == 'pausing' and self._pause_cancellation_started and not self._zombies:
+            self._operator_state = 'paused'
+            for slot in self.slots:
+                slot.snapshot_bytes = 0
         # A cancelled callback may still own its copy until it acknowledges cancellation.
         if not self._zombies:
             for slot in self.slots:

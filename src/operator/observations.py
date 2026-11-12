@@ -162,8 +162,9 @@ class Observations:
                 # Netted aggregate positions cannot establish strategy ownership.
                 for name, holdings in portfolio.strategy_positions.items():
                     for position in holdings.values():
-                        identity=json.dumps([portfolio.portfolio_id,name,position.exchange,
-                            position.market_id,position.outcome],separators=(',',':'))
+                        identity=hashlib.sha256(json.dumps([portfolio.portfolio_id,name,
+                            position.exchange,position.market_id,position.outcome],
+                            ensure_ascii=False,separators=(',',':')).encode('utf-8')).hexdigest()
                         row=dict(id=identity,strategy=name,
                             attribution='strategy' if name in summaries else 'system',
                             portfolio_id=portfolio.portfolio_id,exchange=position.exchange,
@@ -175,13 +176,15 @@ class Observations:
                             summaries[name]['position_count'] += 1
         for summary in summaries.values():
             summary['operator_state']=runner.operator_state
+        venues={venue:dict(ready=bool(value.get('ready',False)),
+            reason=safe_text(value.get('reason',''))) for venue,value in status.get('venues',{}).items()}
         prospective=dict(config=self.config,strategies=summaries,orders=orders,
             positions=positions,fills=self.fills,events=self.events,findings=self.findings,
-            activities=self.activities,errors=self.errors)
+            venues=venues,activities=self.activities,errors=self.errors)
         if retained_bytes(prospective)>self.model_limit:
             raise ProtocolError('limit_exceeded','Current projection exceeds memory budget')
         self.strategies,self.orders,self.positions=summaries,orders,positions
-        self.venues=status.get('venues',{})
+        self.venues=venues
         self.market_time=runner.clock()
         self.snapshot_at=time.time()
         self.last_refresh=time.monotonic()

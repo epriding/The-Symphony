@@ -158,6 +158,41 @@ def test_observation_model_and_fill_retention_remain_bounded():
     assert page['evicted'] is True
 
 
+def test_unicode_position_identities_still_produce_usable_bounded_cursors():
+    from types import SimpleNamespace
+    from src.operator.observations import Observations
+    from src.utilities.classes import Position
+    name='🧪'*64
+    config=valid_config(strategies=[strategy_config(name)])
+    holdings={str(i):Position('🐳'*63+str(i),VENUES[0],'YES',1,.5,Side.BUY,name,'PAPER')
+        for i in range(2)}
+    portfolio=SimpleNamespace(paper=True,portfolio_id='PAPER',positions=holdings,
+        strategy_positions={name:holdings})
+    runner=SimpleNamespace(status={'strategies':{},'venues':{}},
+        _session=SimpleNamespace(engine=SimpleNamespace(orders={}),
+            state=SimpleNamespace(portfolios={'PAPER':portfolio})),
+        operator_state='running',clock=lambda:START)
+    observations=Observations(config)
+    observations.refresh(runner)
+    first=observations.read(name,'positions',limit=1)
+    second=observations.read(name,'positions',limit=1,cursor=first['next_cursor'])
+    assert len(first['items'])==len(second['items'])==1
+    assert first['items'][0]['id']!=second['items'][0]['id']
+    assert not second['has_more']
+
+
+def test_venue_reason_is_sanitized_and_counted_with_the_copied_projection():
+    from types import SimpleNamespace
+    from src.operator.observations import Observations
+    observations=Observations(valid_config())
+    runner=SimpleNamespace(status={'strategies':{},'venues':{VENUES[0]:{
+        'ready':False,'reason':'\x1b[31m'+'x'*8000}}},_session=None,
+        operator_state='running',clock=lambda:START)
+    observations.refresh(runner)
+    reason=observations.venues[VENUES[0]]['reason']
+    assert len(reason.encode())<=2048 and '\x1b' not in reason
+
+
 @pytest.mark.asyncio
 async def test_finished_smoke_exposes_real_fills_positions_and_paper_mode(tmp_path):
     service = service_type()(output_root=tmp_path/'runs', smoke=True)
@@ -185,6 +220,29 @@ async def test_finished_smoke_exposes_real_fills_positions_and_paper_mode(tmp_pa
         positions = await rpc(reader,writer,'strategy',params={'name':'smoke','collection':'positions'},**target)
         assert len(positions['data']['items']) == 2
         assert positions['data']['scope'] == 'active'
+        writer.close()
+        await writer.wait_closed()
+    finally:
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_public_market_source_is_still_paper_and_live_routes_are_rejected(tmp_path):
+    config=valid_config(source='public')
+    invalid=deepcopy(config)
+    invalid['strategy_portfolios']['one']='LIVE'
+    with pytest.raises(ValueError):
+        service_type()(invalid,output_root=tmp_path/'rejected')
+    service=service_type()(config,output_root=tmp_path/'runs')
+    await service.start(tmp_path/'private/control.sock')
+    try:
+        reader,writer=await connect(service)
+        overview=await rpc(reader,writer)
+        assert overview['data']['source']=='public'
+        assert overview['data']['live_execution_supported'] is False
+        strategies=await rpc(reader,writer,'strategies',service_id=service.service_id)
+        assert strategies['ok'] and strategies['data']['items'][0]['execution_mode']=='PAPER'
+        assert service.session_id is None and not (tmp_path/'runs').exists()
         writer.close()
         await writer.wait_closed()
     finally:
