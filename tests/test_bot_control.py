@@ -217,9 +217,14 @@ async def test_service_stop_retains_uncooperative_callback_as_unresolved_cleanup
 
 
 @pytest.mark.asyncio
-async def test_pausing_keeps_market_and_risk_progress_while_callback_cleanup_is_pending(tmp_path):
+async def test_pausing_keeps_market_and_risk_progress_while_callback_cleanup_is_pending(
+        tmp_path, delayed_history_startup):
     config=valid_config(strategies=[strategy_config('alpha',factory='cleanup')])
-    config['runtime']['shutdown_grace_seconds']=.5
+    # This checks pause ordering, not host disk speed. Archive initialization
+    # shares the cleanup budget; give real SQLite work headroom on CI while
+    # retaining the strict .2-second progress assertion below.
+    config['runtime']['shutdown_grace_seconds']=2
+    config['runtime']['startup_timeout_seconds']=2
     clock=VirtualClock(START)
     feeds=[ControlledFeed(v,clock=clock) for v in VENUES]
     entered,cleaning,release=asyncio.Event(),asyncio.Event(),asyncio.Event()
@@ -242,7 +247,7 @@ async def test_pausing_keeps_market_and_risk_progress_while_callback_cleanup_is_
         strategy_factories={'cleanup':factory},operator_controls=True,operator_observer=observer)
     task=asyncio.create_task(runner.run())
     try:
-        await eventually(lambda: all(f.started.is_set() for f in feeds))
+        await eventually(lambda: all(f.started.is_set() for f in feeds),task=task)
         for feed in feeds:
             await feed.push_book()
         await asyncio.wait_for(entered.wait(),2)

@@ -9,6 +9,21 @@ from src.utilities.classes import (
 from src.utilities.trading_state import TradingState
 
 
+@pytest.fixture(params=[0, .65], ids=['normal-storage', 'slow-storage'])
+def delayed_history_startup(request, monkeypatch):
+    """Exercise actual archive setup with a bounded storage scheduling delay."""
+    if request.param:
+        import time
+        from src.paper_trading.history import HistoryStore
+        initialize = HistoryStore._initialize
+
+        def delayed(store, connection):
+            time.sleep(request.param)
+            return initialize(store, connection)
+
+        monkeypatch.setattr(HistoryStore, '_initialize', delayed)
+
+
 class Clock:
     def __init__(self):
         self.now = 1_800_000_000.0
