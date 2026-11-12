@@ -132,6 +132,7 @@ def retention_config():
     # retention/accounting, rather than subsecond host I/O, is the invariant.
     config['runtime']['startup_timeout_seconds'] = 2
     config['runtime']['shutdown_grace_seconds'] = 2
+    config['runtime']['strategy_timeout_seconds'] = 2
     config["risk"]["PAPER"].update(max_position_exposure=.50,
                                    max_total_exposure=10,
                                    max_quote_age_seconds=5,
