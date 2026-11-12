@@ -1,6 +1,7 @@
 # Spec: terminal-ui
 
 Status: Draft for human approval. Module id: `terminal-ui`.
+Library choice: Textual, explicitly requested by the user in place of curses.
 Depends on: implemented `runtime-access`. No TUI code is delivered by this draft.
 Sources: [confirmed intent](docs/intent/trading-bot-tui.md),
 [approved capability map](CAPABILITY-MAP.md),
@@ -17,8 +18,8 @@ automating keystrokes. Agent diagnosis and code repair remain external.
 
 ## Proposed defaults for approval
 
-- Use standard-library curses, available on this Python 3.12 host. Add no
-  third-party TUI dependency.
+- Use Textual with Python 3.12. The user authorized this library change;
+  the remaining UI defaults still await spec approval.
 - Show an overview and selectable strategy detail. Keep connection status,
   session state, execution mode, data age and available keys visible.
 - Poll the visible view about once per second without overlapping refreshes.
@@ -30,9 +31,22 @@ automating keystrokes. Agent diagnosis and code repair remain external.
 
 ## Tech stack and interface
 
-Python 3.12, curses, bounded standard-library socket I/O, JSON, pytest and
-pytest-asyncio. Target Linux terminals with working terminfo; SSH provides
-laptop access. No browser, TCP listener, daemon installation or new auth system.
+Python 3.12, Textual, bounded asyncio Unix-socket I/O, JSON, pytest and
+pytest-asyncio. Pin the new direct dependency as `textual==8.2.8` during
+implementation, without optional syntax-highlighting or development extras.
+[Published package metadata](https://pypi.org/project/textual/8.2.8/) declares
+Python >=3.9,<4 compatibility, including our Python 3.12 runtime. Dependency
+resolution and the full regression remain implementation checks, not claims
+that the package has already been installed or tested with this bot.
+
+Use Textual's built-in widgets, screens and
+[TCSS stylesheets](https://textual.textualize.io/guide/CSS/) for consistent
+spacing, a restrained color palette, clear table selection, visible keyboard
+focus and visually distinct status panels. Use its asynchronous event loop
+and [workers](https://textual.textualize.io/guide/workers/) to keep network I/O
+off the input/render path, with bounded cancellation and separate read/control
+work. Target Linux terminals; SSH provides laptop access. No browser, TCP
+listener, daemon installation or new auth system.
 
 Consume protocol version 1 from [the provider guide](docs/BOT_CONTROL.md).
 Never import a runner to obtain state or change the ledger directly. Initial
@@ -110,11 +124,13 @@ unavailable observations explicitly rather than displaying empty success.
 
 Bound frames to 1 MiB and decoded response objects to the provider's 512 KiB
 profile. Validate required types, version, request correlation, target identities
-and collection shape before applying replies. Keep client-owned retained state
-within 8 MiB under fixture workloads; this is not a whole-process RSS promise.
+and collection shape before applying replies. Keep client-owned observation
+data, pages and I/O queues within 8 MiB under fixture workloads; Textual's
+framework/rendering allocations are separate, not a whole-process RSS promise.
 Discard invalid payloads without retaining/rendering tracebacks. Strip terminal
 control characters from every displayed field, even though the provider also
-sanitizes text. Never execute findings or automatically open evidence paths.
+sanitizes text. Render service-supplied strings literally, without interpreting
+Rich/Textual markup. Never execute findings or automatically open evidence paths.
 
 ## Terminal behavior
 
@@ -126,7 +142,7 @@ monochrome and ASCII fallback, clip/wrap long text safely, and let the operator
 scroll the full selected message.
 
 Require a TTY and usable terminal definition; explain startup errors before
-entering curses. Restore terminal modes on normal exit, Ctrl-C and handled
+starting the Textual app. Restore terminal modes on normal exit, Ctrl-C and handled
 failures. Exit 0 on q, 130 on Ctrl-C, 2 on invalid invocation/terminal setup,
 and 1 on unrecoverable client failure. Service failure/disconnect remains an
 inspectable UI state until the operator quits.
@@ -165,6 +181,8 @@ verification through PTYs with the service running in a separate process.
   provider boundary, usable by both future clients without importing the TUI.
 - `src/operator/tui.py`: terminal views, navigation and UI state. Split further
   only for clarity; no trading/accounting logic belongs here.
+- `src/operator/tui.tcss`: Textual styles for layout, status, focus and tables.
+- `requirements.txt`: pin the user-requested Textual dependency during implementation.
 - `main.py`: explicit `tui` entrypoint; preserve all existing commands.
 - `tests/test_bot_client.py`, `tests/test_bot_tui.py`: transport/state and PTY
   integration tests, reusing offline service fixtures.
@@ -184,15 +202,20 @@ def count_label(value: int | None) -> str:
     return "unknown" if value is None else str(value)
 ```
 
-Do not introduce a generic widget framework or configurable keybinding system
-for v1. Use stable error labels and safe messages, never configuration dumps.
+Use Textual's existing widgets and actions rather than building another widget
+framework. Scope action bindings so text inputs in confirmation screens receive
+ordinary typing. Do not add a configurable keybinding system for v1. Use stable
+error labels and safe messages, never configuration dumps.
 
 ## Testing strategy and success criteria
 
-Write failing behavior tests before each slice. Exercise actual Unix sockets
-and the real offline provider, synchronize state races with barriers, and use
-real PTYs for terminal acceptance. Pure layout tests alone do not prove detach,
-input responsiveness or terminal restoration.
+Write failing behavior tests before each slice. Use Textual's
+[App.run_test() and Pilot](https://textual.textualize.io/guide/testing/) with
+pytest-asyncio for headless keyboard, focus, confirmation, widget-content and
+resize tests. Exercise actual Unix sockets and the real offline provider,
+synchronize state races with barriers, and retain real PTYs for terminal
+acceptance. Headless Pilot tests alone do not prove detach, terminal restoration
+or process independence. No extra snapshot-testing dependency is required.
 
 | ID | Acceptance |
 |---|---|
@@ -204,14 +227,15 @@ input responsiveness or terminal restoration.
 | TU06 | One-second visible-view polling, three-second stale labeling and bounded read-only reconnect work; quote readiness remains separate. |
 | TU07 | Slow reads cannot block input, detach or applicable stop. Malformed/oversized response fixtures keep buffers/pages/tasks within declared bounds. |
 | TU08 | Actual process tests quit, Ctrl-C and kill a client, then reattach to the same bot session while input/risk processing continues. |
-| TU09 | PTYs exercise navigation, confirmations, resize, monochrome/ASCII, long text and terminal-control payloads; q/Ctrl-C/errors restore terminal modes. |
+| TU09 | Pilot and PTY tests exercise navigation, focus, confirmations, resize, monochrome/ASCII, long text, literal markup and terminal-control payloads; real PTYs verify q/Ctrl-C/errors restore terminal modes. |
 | TU10 | Full regression, compilation and dependency checks pass; documented offline service/TUI path is verified with no weakened/skipped tests. |
 
 ## Boundaries
 
 - **Always:** Consume provider state, show unknown/stale honestly, preserve
   targeting, sanitize output, verify PTYs/sockets and update docs and trail.
-- **Ask first:** Add dependencies, alter provider contract/accounting, add
+- **Ask first:** Add dependencies beyond the user-requested Textual package,
+  alter provider contract/accounting, add
   controls/configuration, edit CI, deploy or start a user's public session.
   Spec approval permits implementation and offline tests only.
 - **Never:** Real-money execution, arbitrary order entry, strategy editing,
@@ -221,10 +245,12 @@ input responsiveness or terminal restoration.
 
 ## Open questions and approval
 
-Approve or revise curses, overview/detail layout, keys, refresh/stale thresholds,
-confirmations and small-terminal behavior. These are concrete proposed defaults,
-not choices already approved in the intent interview. No additional factual
-input is needed to plan once approved. Agent-interface remains a separate spec.
+Textual replaces curses at the user's explicit request; do not ask again for
+permission to use it. Approve or revise the remaining overview/detail layout,
+keys, refresh/stale thresholds, confirmations and small-terminal behavior.
+These are concrete proposed defaults, not choices already approved in the
+intent interview. No additional factual input is needed to plan once approved.
+Agent-interface remains a separate spec.
 
 Planning starts only after human approval of this spec in a later turn. This
 draft cannot authorize reusing the completed provider plan for TUI code.
