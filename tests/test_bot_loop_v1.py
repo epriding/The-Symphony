@@ -157,6 +157,9 @@ async def test_readiness_waits_for_both_venues_and_snapshots_are_independent(
 async def test_one_callback_and_one_latest_notification_while_risk_timers_continue(bot_api, tmp_path, monkeypatch):
     config = valid_config(strategies=[strategy_config("slow"), strategy_config("healthy")])
     config["runtime"]["strategy_timeout_seconds"] = .8
+    # Coalescing/risk progress is asserted above cleanup; durable capture
+    # finalization must not turn it into a 250 ms host-storage benchmark.
+    config['runtime']['shutdown_grace_seconds'] = 2
     release, started = asyncio.Event(), asyncio.Event()
     slow_prices, healthy_calls, risk_checks = [], [], []
     active, peak = 0, 0
@@ -206,7 +209,7 @@ async def test_one_callback_and_one_latest_notification_while_risk_timers_contin
         await eventually(lambda: len(risk_checks) >= after_latest_dispatch + 2)
         assert slow_prices == [.5, .55], "old notifications were queued instead of replaced"
         assert peak == 1
-        await stop_and_join(runner, task)
+        await stop_and_join(runner, task, timeout=5)
     finally:
         release.set()
         await dispose(task)
