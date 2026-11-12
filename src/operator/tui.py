@@ -11,6 +11,8 @@ from textual.widgets import DataTable, Footer, Static
 
 from .client import ClientError, RuntimeClient
 from .tui_state import ViewState, label
+from .tui_dialogs import Confirmation, Help
+from .protocol import CONTROL_OPS
 
 COLLECTIONS=('orders','positions','fills','events','findings')
 COLUMNS={
@@ -31,10 +33,13 @@ class BotApp(App[int]):
               Binding('tab','next_pane','Next tab',priority=True),
               Binding('shift+tab','previous_pane','Previous tab',priority=True),
               ('n','next_page','Next page'),('b','first_page','First page'),
-              ('escape','back','Overview'),('j','down','Down'),('k','up','Up')]
+              ('escape','back','Overview'),('j','down','Down'),('k','up','Up'),
+              ('s','start','Start'),('p','pause','Pause'),('r','resume','Resume'),
+              ('x','stop','Stop'),('?','help','Help')]
 
     def __init__(self, socket_path: str | Path, *, clock=time.monotonic):
         super().__init__()
+        self.animation_level='none'
         self.client=RuntimeClient(socket_path)
         self.state=ViewState()
         self.clock=clock
@@ -43,6 +48,9 @@ class BotApp(App[int]):
         self._retry_delay=1
         self._visible_rows=[]
         self._table_key=None
+        self._command_worker=None
+        self.confirmation=None
+        self._last_bindings=None
 
     @property
     def overview(self):
@@ -57,6 +65,8 @@ class BotApp(App[int]):
             yield Static('Service / unknown',id='identity',markup=False)
             yield Static('Waiting for observations',id='health',markup=False)
             yield Static(self.state.notice,id='notice',markup=False)
+            yield Static('Pause gates strategy decisions; existing orders and risk actions can continue.',
+                id='control_note',markup=False)
             yield Static('STRATEGIES / loading',id='collection',markup=False)
             yield DataTable(id='records',cursor_type='row',zebra_stripes=True)
             with VerticalScroll(id='detail_scroll',can_focus=True):
@@ -89,7 +99,10 @@ class BotApp(App[int]):
         previous=self.state.generation
         self.state.accept_overview(reply,self.clock())
         if previous!=self.state.generation:
+            if self.confirmation is not None:
+                self.confirmation.dismiss(False)
             self.render_records()
+        self.reconcile_control()
         # The timer supplies cadence; only failed discovery adds backoff.
         # Waiting another second after a reply would skip the next timer tick.
         self._next_attempt=0
@@ -126,24 +139,36 @@ class BotApp(App[int]):
         self.state.page_revision=reply['revision']
         self.render_records()
 
+    def update_text(self, selector: str, content: str) -> None:
+        widget=self.query_one(selector,Static)
+        if widget.content!=content:
+            widget.update(content)
+
     def render_status(self) -> None:
         age=self.state.age(self.clock())
         status=self.state.connection
         if not self.state.fresh(self.clock()):
             status+=' / STALE'
-        status+=f' / last response {age:.1f}s ago' if age!=float('inf') else ' / no observations yet'
-        self.query_one('#connection',Static).update(status)
-        self.query_one('#notice',Static).update(self.state.notice)
+        status+=f' / last response {int(age)}s ago' if age!=float('inf') else ' / no observations yet'
+        self.update_text('#connection',status)
+        self.update_text('#notice',self.state.unknown or self.state.notice)
+        bindings=tuple(self.control_allowed(op) for op in sorted(CONTROL_OPS))
+        if bindings!=self._last_bindings:
+            self._last_bindings=bindings
+            self.refresh_bindings()
         view=self.overview
         if view is None:
             return
-        self.query_one('#session',Static).update(
+        self.update_text('#session',
             f"SESSION  /  {label(view['lifecycle'])}  |  operator {label(view.get('operator_state'))}")
-        self.query_one('#mode',Static).update('EXECUTION  /  PAPER ONLY  |  LIVE unsupported'
+        pause=('Strategy decisions paused' if view['operator_state']=='paused' else
+            'Pausing strategy decisions' if view['operator_state']=='pausing' else 'Pause gates strategy decisions')
+        self.update_text('#control_note',pause+'; existing orders and risk actions can continue.')
+        self.update_text('#mode','EXECUTION  /  PAPER ONLY  |  LIVE unsupported'
             f"  |  {label(view.get('source'))} data  |  observe-only {label(view.get('observe_only'))}")
-        self.query_one('#identity',Static).update(
+        self.update_text('#identity',
             f'Service {self.state.target[0]}\nSession {self.state.target[1] or "none (idle)"}')
-        self.query_one('#health',Static).update(
+        self.update_text('#health',
             f"Strategies ready {label(view.get('strategy_ready_count'))}/{label(view.get('strategy_count'))}"
             f"  |  venues {label(view.get('venue_ready_count'))}/{label(view.get('venue_count'))}"
             f"  |  orders {label(view.get('active_order_count'))}  |  positions {label(view.get('position_count'))}\n"
@@ -223,14 +248,14 @@ class BotApp(App[int]):
         self.poll()
 
     def action_next_pane(self) -> None:
-        if self.state.strategy is None:
+        if len(self.screen_stack)>1 or self.state.strategy is None:
             self.screen.focus_next()
         else:
             self.state.collection=COLLECTIONS[(COLLECTIONS.index(self.state.collection)+1)%len(COLLECTIONS)]
             self.navigate()
 
     def action_previous_pane(self) -> None:
-        if self.state.strategy is None:
+        if len(self.screen_stack)>1 or self.state.strategy is None:
             self.screen.focus_previous()
         else:
             self.state.collection=COLLECTIONS[(COLLECTIONS.index(self.state.collection)-1)%len(COLLECTIONS)]
@@ -244,6 +269,14 @@ class BotApp(App[int]):
         self.navigate()
 
     def action_back(self) -> None:
+        if len(self.screen_stack)>1:
+            self.screen.dismiss(False)
+            return
+        if self.state.unknown:
+            self.state.unknown=''
+            self.state.notice='Unknown outcome acknowledged; inspect observations before acting.'
+            self.render_status()
+            return
         self.state.strategy=None
         self.state.summary=None
         self.navigate()
@@ -258,6 +291,107 @@ class BotApp(App[int]):
 
     def action_interrupt(self) -> None:
         self.exit(130,return_code=130)
+
+    def control_allowed(self, action: str) -> bool:
+        if (not self.state.fresh(self.clock()) or self.overview is None
+                or len(self.screen_stack)>1
+                or self._command_worker is not None and not self._command_worker.is_finished):
+            return False
+        if self.state.pending is not None and self.state.pending[0]==action:
+            return False
+        if self.state.unknown and action!='stop':
+            return False
+        phase=self.overview['lifecycle']
+        operator=self.overview['operator_state']
+        if action=='start':
+            return (phase in ('idle','stopped','failed')
+                and not self.overview.get('cleanup_unresolved')
+                and not self.overview.get('finding_append_pending'))
+        active=self.state.target[1] is not None and phase in ('starting','ready','degraded','stopping')
+        return active and (action=='stop' or phase!='stopping'
+            and (action=='pause' and operator=='running' or action=='resume' and operator=='paused'))
+
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        if len(self.screen_stack)>1 and action not in ('detach','interrupt','next_pane','previous_pane'):
+            return False
+        return self.control_allowed(action) if action in CONTROL_OPS else True
+
+    def confirm(self, action: str) -> None:
+        if not self.control_allowed(action):
+            return
+        target=self.state.target
+        dialog=Confirmation(action,target)
+        self.confirmation=dialog
+        def completed(approved):
+            self.confirmation=None
+            if not approved:
+                return
+            if self.state.target!=target or not self.control_allowed(action):
+                self.state.notice='Target or control availability changed; no request sent.'
+                self.render_status()
+                return
+            self._command_worker=self.send_control(action,target)
+        self.push_screen(dialog,completed)
+
+    def action_start(self) -> None:
+        self.confirm('start')
+
+    def action_stop(self) -> None:
+        self.confirm('stop')
+
+    def action_pause(self) -> None:
+        if self.control_allowed('pause'):
+            self._command_worker=self.send_control('pause',self.state.target)
+
+    def action_resume(self) -> None:
+        if self.control_allowed('resume'):
+            self._command_worker=self.send_control('resume',self.state.target)
+
+    def action_help(self) -> None:
+        if len(self.screen_stack)==1:
+            self.push_screen(Help())
+
+    @work(group='controls')
+    async def send_control(self, action: str, target: tuple) -> None:
+        self.state.pending=(action,target)
+        self.state.notice=f'Sending {action} / target {target[0]} / {target[1] or "idle"}'
+        self.render_status()
+        try:
+            reply=await self.client.request(action,target=target)
+        except ClientError as error:
+            self.state.pending=None
+            if error.unknown or error.code=='internal_error':
+                self.state.unknown=f'Outcome unknown: {action} / target {target}. No automatic retry. Esc acknowledges.'
+            else:
+                self.state.notice=f'{action} rejected / {error.code}. Observe before acting again.'
+        else:
+            expected=(reply['service_id'],reply['session_id'])
+            self.state.pending=(action,expected)
+            self.state.notice=f'Accepted {action}; awaiting observed transition for {expected}.'
+            self.reconcile_control()
+        self._next_attempt=0
+        self.poll()
+        self.render_status()
+
+    def reconcile_control(self) -> None:
+        if self.state.pending is None or self.overview is None:
+            return
+        action,target=self.state.pending
+        if target!=self.state.target:
+            if self._command_worker is not None and not self._command_worker.is_finished:
+                return
+            self.state.unknown=f'Outcome unknown: {action} for old target {target}. No retry; Esc acknowledges.'
+            self.state.pending=None
+            return
+        phase=self.overview['lifecycle']
+        operator=self.overview['operator_state']
+        confirmed=(action=='start' and target[1] is not None and phase!='idle'
+            or action=='stop' and phase in ('stopped','failed')
+            or action=='pause' and operator=='paused'
+            or action=='resume' and operator=='running' and phase in ('starting','ready','degraded'))
+        if confirmed:
+            self.state.pending=None
+            self.state.notice=f'Observed {action} / lifecycle {phase}; inspect readiness, reason and cleanup state.'
 
     async def on_unmount(self) -> None:
         await self.client.close()

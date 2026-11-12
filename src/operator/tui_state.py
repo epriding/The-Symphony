@@ -24,6 +24,8 @@ class ViewState:
     summary: dict | None = None
     page_revision: int | None = None
     view_generation: int = 0
+    pending: tuple | None = None
+    unknown: str = ''
 
     def accept_overview(self, reply: dict, now: float) -> None:
         target=(reply['service_id'],reply['session_id'])

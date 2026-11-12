@@ -20,3 +20,11 @@ Footer { background: #1b2c3a; }
 #detail_scroll { height: 4; border-top: solid #365064; }
 #detail_scroll:focus { border: solid #8bded0; }
 #record_details { height: auto; }
+#control_note { height: 1; color: #edc47c; }
+Confirmation, Help { align: center middle; background: #101820 85%; }
+.dialog { width: 80; max-width: 95%; height: auto; max-height: 95%; padding: 1 2; background: #1b2c3a; border: round #8bded0; }
+.dialog Static { height: auto; }
+.dialog_title { text-style: bold; color: #8bded0; margin-bottom: 1; }
+#confirm_warning { margin: 1 0; color: #edc47c; }
+#confirm_action { margin: 1 0; }
+#confirm_error { color: #ef9696; }

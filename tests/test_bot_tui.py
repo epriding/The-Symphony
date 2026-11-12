@@ -183,3 +183,133 @@ async def test_strategy_pages_and_disabled_modes_remain_visible(tmp_path):
             assert service.session_id is None
             await pilot.press('q')
     finally:await service.close()
+
+
+@pytest.mark.asyncio
+async def test_confirmed_start_pause_resume_stop_use_real_session_controls(tmp_path):
+    from test_bot_service import controlled_service
+    service,feeds,_=controlled_service(tmp_path)
+    service.config['runtime'].update(startup_timeout_seconds=2,shutdown_grace_seconds=2)
+    await service.start(tmp_path/'private/control.sock');app=app_type()(service.socket_path)
+    async def seed_books():
+        await asyncio.gather(*(feed.started.wait() for feed in feeds))
+        for feed in feeds:await feed.push_book()
+    market_task=asyncio.create_task(seed_books())
+    try:
+        async with app.run_test(size=(100,28)) as pilot:
+            await eventually(lambda:app.state.fresh(app.clock()))
+            await pilot.press('s')
+            assert 'new' in str(app.screen.query_one('#confirm_warning').content).lower()
+            await pilot.press(*'start')
+            assert app.screen.query_one('#confirm_action').value=='start'
+            await pilot.press('enter')
+            await eventually(lambda:all(feed.started.is_set() for feed in feeds))
+            await eventually(lambda:app.overview['lifecycle']=='ready',timeout=3)
+            await pilot.press('p')
+            await eventually(lambda:app.overview['operator_state']=='paused',timeout=3)
+            assert 'existing orders' in str(app.query_one('#control_note').content)
+            await pilot.press('r')
+            await eventually(lambda:app.overview['operator_state']=='running',timeout=3)
+            await pilot.press('x',*'stop','enter')
+            await eventually(lambda:service.session_task.done())
+            await eventually(lambda:app.overview['lifecycle']=='stopped',timeout=3)
+            assert len(list((tmp_path/'runs').iterdir()))==1
+            await pilot.press('q')
+        assert service._server.is_serving()
+    finally:
+        market_task.cancel()
+        await asyncio.gather(market_task,return_exceptions=True)
+        await service.close()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_and_replaced_confirmation_never_starts_again(tmp_path):
+    from src.operator.client import RuntimeClient
+    service=service_type()(smoke=True,output_root=tmp_path/'runs')
+    await service.start(tmp_path/'private/control.sock');app=app_type()(service.socket_path)
+    operator=RuntimeClient(service.socket_path)
+    try:
+        async with app.run_test(size=(100,28)) as pilot:
+            await eventually(lambda:app.state.fresh(app.clock()))
+            await pilot.press('s',*'bjnk')
+            assert app.screen.query_one('#confirm_action').value=='bjnk'
+            await pilot.press('escape')
+            assert service.session_id is None and not (tmp_path/'runs').exists()
+            await pilot.press('s')
+            assert app.confirmation is not None
+            await operator.request('start',target=(service.service_id,None))
+            await eventually(lambda:app.confirmation is None,timeout=3)
+            await pilot.press('enter')
+            assert len(list((tmp_path/'runs').iterdir()))==1
+            await pilot.press('q')
+    finally:await operator.close();await service.close()
+
+
+@pytest.mark.asyncio
+async def test_lost_control_reply_stays_unknown_and_is_never_retried(tmp_path,monkeypatch):
+    from src.operator.client import RuntimeClient,ClientError
+    from test_bot_service import controlled_service
+    service,feeds,_=controlled_service(tmp_path)
+    service.config['runtime'].update(startup_timeout_seconds=2,shutdown_grace_seconds=2)
+    await service.start(tmp_path/'private/control.sock')
+    operator=RuntimeClient(service.socket_path)
+    await operator.request('start',target=(service.service_id,None))
+    await eventually(lambda:all(feed.started.is_set() for feed in feeds))
+    for feed in feeds:await feed.push_book()
+    app=app_type()(service.socket_path);original=app.client.request;stops=[]
+    async def lose(op,**kwargs):
+        result=await original(op,**kwargs)
+        if op=='stop':
+            stops.append(kwargs['target'])
+            raise ClientError('connection_lost',unknown=True)
+        return result
+    monkeypatch.setattr(app.client,'request',lose)
+    try:
+        async with app.run_test(size=(100,28)) as pilot:
+            await eventually(lambda:app.overview is not None)
+            await pilot.press('x',*'stop','enter')
+            await eventually(lambda:bool(app.state.unknown))
+            await eventually(lambda:app.overview['lifecycle']=='stopped',timeout=3)
+            assert len(stops)==1 and 'unknown' in str(app.query_one('#notice').content).lower()
+            await pilot.press('escape')
+            assert not app.state.unknown
+            await pilot.press('q')
+    finally:await operator.close();await service.close()
+
+
+@pytest.mark.asyncio
+async def test_blocked_observation_does_not_block_confirmed_stop_or_detach(tmp_path,monkeypatch):
+    from textual.events import Key, Paste
+    from src.operator.client import RuntimeClient
+    from test_bot_service import controlled_service
+    service,feeds,_=controlled_service(tmp_path)
+    service.config['runtime'].update(startup_timeout_seconds=2,shutdown_grace_seconds=2)
+    await service.start(tmp_path/'private/control.sock');operator=RuntimeClient(service.socket_path)
+    await operator.request('start',target=(service.service_id,None))
+    await eventually(lambda:all(feed.started.is_set() for feed in feeds))
+    for feed in feeds:await feed.push_book()
+    app=app_type()(service.socket_path)
+    original=service._execute;entered=asyncio.Event();release=asyncio.Event()
+    async def blocked(request):
+        if request['op']=='overview':entered.set();await release.wait()
+        return await original(request)
+    try:
+        async with app.run_test(size=(100,28)) as pilot:
+            await eventually(lambda:app.overview is not None)
+            monkeypatch.setattr(service,'_execute',blocked)
+            await asyncio.wait_for(entered.wait(),2)
+            # Pilot.press waits twice per key for process-wide CPU idleness;
+            # the real in-process risk loop prevents that. Send the same public
+            # input events and synchronize on visible state instead of idleness.
+            app.post_message(Key('x','x'))
+            await eventually(lambda:app.confirmation is not None and len(app.screen_stack)>1)
+            field=app.screen.query_one('#confirm_action')
+            field.post_message(Paste('stop'))
+            await eventually(lambda:field.value=='stop')
+            app.post_message(Key('enter','\r'))
+            await eventually(lambda:service.session_task.done())
+            assert not release.is_set() and app.state.pending is not None
+            await pilot.press('q')
+        assert app.client.connection_count==0
+    finally:
+        release.set();await operator.close();await service.close()

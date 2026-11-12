@@ -1,7 +1,7 @@
 # Terminal-ui tasks
 
 Plan: [plan.md](plan.md). Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
-Status: Approved; TU-04 complete; TU-05 in progress.
+Status: Approved; TU-05 complete; TU-06 in progress.
 Every behavioral task requires RED -> GREEN -> full regression -> compile ->
 review -> scoped commit. Run common checks from plan.md before completion.
 Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
@@ -78,7 +78,7 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ## TU-05: Apply deliberate exact-target controls
 
-- [ ] Add confirmed start/stop, pause/resume and pending/unknown outcome state.
+- [x] Add confirmed start/stop, pause/resume and pending/unknown outcome state.
 - Acceptance: Confirmation names the frozen target and requires typed action;
   cancel/invalid states are harmless. Admission is distinct from completion.
   Replacements invalidate dialogs; timeout never retargets or repeats a command.
@@ -86,13 +86,13 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
   and common checks. Exercise real runner transitions and synchronized response
   loss/target changes; blocked reads must not prevent applicable stop or quit.
 - Dependencies: TU-04.
-- Files: src/operator/client.py, src/operator/tui_state.py,
-  src/operator/tui.py, tests/test_bot_client.py, tests/test_bot_tui.py.
+- Files: src/operator/tui.py, src/operator/tui_state.py,
+  src/operator/tui_dialogs.py, src/operator/tui.tcss, tests/test_bot_tui.py.
 - Scope: Medium. Coverage: TU04, TU05, TU07.
 
 ### Checkpoint: complete human control path
 
-- [ ] Full checks pass; real state and controls agree with the provider.
+- [x] Full checks pass; real state and controls agree with the provider.
   Review fresh-account/pause wording and races without adding trading logic.
 
 ## TU-06: Prove bounded and hostile-input failure behavior
