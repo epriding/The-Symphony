@@ -16,3 +16,5 @@ websockets>=13.0
 backoff>=2.2.1
 python-telegram-bot>=20.0
 
+
+textual==8.2.8

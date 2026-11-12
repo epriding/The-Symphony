@@ -1,14 +1,14 @@
 # Terminal-ui tasks
 
 Plan: [plan.md](plan.md). Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
-Status: Approved; TU-00 in progress.
+Status: Approved; TU-00 complete; TU-01 in progress.
 Every behavioral task requires RED -> GREEN -> full regression -> compile ->
 review -> scoped commit. Run common checks from plan.md before completion.
 Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ## TU-00: Verify Textual in the existing environment
 
-- [ ] Pin and install `textual==8.2.8`, without extras.
+- [x] Pin and install `textual==8.2.8`, without extras.
 - Acceptance: Current baseline is verified; dependency resolution, imports,
   pip check and full regression pass with all existing requirements retained.
 - Verify: `venv/bin/python -m pip install -r requirements.txt`, then
