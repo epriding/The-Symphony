@@ -89,9 +89,9 @@ class BotApp(App[int]):
     async def load_overview(self) -> None:
         try:
             reply=await self.client.request('overview')
-        except ClientError:
+        except ClientError as error:
             self.state.connected=False
-            self.state.connection='Disconnected'
+            self.state.connection='Disconnected / '+error.code+' / read-only retry; b refreshes'
             self._next_attempt=self.clock()+self._retry_delay
             self._retry_delay=min(5,self._retry_delay*2)
             self.render_status()
@@ -129,6 +129,7 @@ class BotApp(App[int]):
         except ClientError as error:
             if key==(self.state.generation,self.state.view_generation):
                 self.state.page=None
+                self.state.summary=None
                 self.state.notice='View unavailable / '+error.code
                 self.render_records()
             return

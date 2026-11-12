@@ -1,7 +1,7 @@
 # Terminal-ui tasks
 
 Plan: [plan.md](plan.md). Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
-Status: Approved; TU-05 complete; TU-06 in progress.
+Status: Approved; TU-06 complete; TU-07 in progress.
 Every behavioral task requires RED -> GREEN -> full regression -> compile ->
 review -> scoped commit. Run common checks from plan.md before completion.
 Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
@@ -97,7 +97,7 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ## TU-06: Prove bounded and hostile-input failure behavior
 
-- [ ] Complete backpressure, resource accounting and malformed reply coverage.
+- [x] Complete backpressure, resource accounting and malformed reply coverage.
 - Acceptance: Client data/pages/queues stay within the approved 8 MiB profile;
   tasks/connections release on cancellation and detach. Oversized, malformed,
   stale-generation, markup and control-sequence payloads cannot become success.
@@ -105,7 +105,7 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
   and common checks. Record actual retained-byte/task high-water evidence under
   repeated paging, delayed replies, unknown controls and target replacement.
 - Dependencies: TU-05.
-- Files: src/operator/client.py, src/operator/tui_state.py,
+- Files: src/operator/client.py, src/operator/client_schema.py,
   src/operator/tui.py, tests/test_bot_client.py, tests/test_bot_tui.py.
 - Scope: Medium. Coverage: TU05, TU07, TU09.
 

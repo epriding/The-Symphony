@@ -6,9 +6,10 @@ from uuid import uuid4
 
 from .protocol import (
     CONTROL_OPS, DEADLINE, MAX_REQUEST, MAX_RESPONSE, MAX_RESPONSE_OBJECT,
-    ProtocolError, _pairs, _validate_tree, bounded_text, decode_request,
+    OPERATIONS, _pairs, _validate_tree, bounded_text, decode_request, invalid,
 )
 from ..paper_trading.runtime_config import retained_bytes
+from .client_schema import validate_data
 
 
 class ClientError(Exception):
@@ -43,8 +44,7 @@ def decode_reply(raw: bytes, request: dict) -> dict:
         if depth>16 or nodes>16384:
             raise ClientError('invalid_response')
     try:
-        value=json.loads(raw.decode('utf-8'),object_pairs_hook=_pairs,
-            parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+        value=json.loads(raw.decode('utf-8'),object_pairs_hook=_pairs,parse_constant=invalid)
         _validate_tree(value)
         if not isinstance(value,dict) or retained_bytes(value)>MAX_RESPONSE_OBJECT:
             raise ValueError()
@@ -91,10 +91,11 @@ def decode_reply(raw: bytes, request: dict) -> dict:
                     or data.get('scope') not in ('active','recent')):
                 raise ValueError()
             bounded_text(data['next_cursor'],2048,nullable=True)
+        validate_data(data,request,value['session_id'])
         return value
     except ClientError:
         raise
-    except (ValueError,KeyError,TypeError,UnicodeError,RecursionError,ProtocolError):
+    except (ValueError,KeyError,TypeError,UnicodeError,RecursionError,OverflowError):
         raise ClientError('invalid_response') from None
 
 
@@ -108,6 +109,12 @@ class RuntimeClient:
         self._busy=set()
         self._closed=False
         self.highwater=0
+        self._payloads={}
+        self.payload_highwater=0
+
+    @property
+    def payload_bytes(self) -> int:
+        return sum(self._payloads.values())
 
     @property
     def connection_count(self) -> int:
@@ -115,15 +122,27 @@ class RuntimeClient:
 
     async def request(self, op: str, *, target: tuple | None = None,
                       params: dict | None = None) -> dict:
+        if not isinstance(op,str) or op not in OPERATIONS:
+            raise ClientError('invalid_request')
         mutation=op in CONTROL_OPS or op=='publish_finding'
         lane='control' if mutation else 'read'
         if self._closed or lane in self._busy:
             raise ClientError('closed' if self._closed else 'busy')
         if target is None and op!='overview':
             raise ClientError('target_required')
+        if (target is not None and (not isinstance(target,tuple) or len(target)!=2)
+                or params is not None and (not isinstance(params,dict)
+                    or any(type(value) not in (str,int) for value in params.values()))):
+            raise ClientError('invalid_request')
+        try:
+            if target is not None:
+                bounded_text(target[0],256,identifier=True)
+                bounded_text(target[1],256,nullable=True,identifier=True)
+        except ValueError:
+            raise ClientError('invalid_request') from None
         request=dict(version=1,request_id=str(uuid4()),op=op,
             service_id=target[0] if target else None,
-            session_id=target[1] if target else None,params=params or {})
+            session_id=target[1] if target else None,params=dict(params) if params is not None else {})
         try:
             if retained_bytes(request)>MAX_REQUEST:
                 raise ValueError()
@@ -132,26 +151,41 @@ class RuntimeClient:
         except (ValueError,TypeError,UnicodeError,RecursionError):
             raise ClientError('invalid_request') from None
         self._busy.add(lane)
+        self._payloads[lane]=len(raw)
         writer=None
         sent=False
         try:
             async with asyncio.timeout(self.timeout):
-                reader,writer=await asyncio.open_unix_connection(self.path,limit=MAX_RESPONSE)
+                reader,writer=await asyncio.open_unix_connection(self.path,limit=64*1024)
                 self._writers.add(writer)
                 self.highwater=max(self.highwater,len(self._writers))
+                if self._closed:
+                    raise ClientError('closed')
                 writer.write(raw)
                 sent=True
                 await writer.drain()
-                reply=await reader.readline()
+                reply=bytearray()
+                while True:
+                    chunk=await reader.read(64*1024)
+                    if not chunk or len(reply)+len(chunk)>MAX_RESPONSE:
+                        raise ClientError('invalid_response',unknown=mutation)
+                    reply.extend(chunk)
+                    self._payloads[lane]=len(raw)+len(reply)
+                    self.payload_highwater=max(self.payload_highwater,self.payload_bytes)
+                    if b'\n' in chunk:
+                        if not reply.endswith(b'\n') or reply.count(b'\n')!=1:
+                            raise ClientError('invalid_response',unknown=mutation)
+                        break
                 try:
                     return decode_reply(reply,request)
                 except ClientError as error:
-                    error.unknown=mutation and error.code=='invalid_response'
+                    error.unknown=mutation and error.code in ('invalid_response','internal_error')
                     raise
         except (TimeoutError,OSError,ValueError):
             raise ClientError('connection_lost',unknown=mutation and sent) from None
         finally:
             self._busy.discard(lane)
+            self._payloads.pop(lane,None)
             if writer is not None:
                 self._writers.discard(writer)
                 writer.transport.abort()

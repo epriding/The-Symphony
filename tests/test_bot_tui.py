@@ -313,3 +313,70 @@ async def test_blocked_observation_does_not_block_confirmed_stop_or_detach(tmp_p
         assert app.client.connection_count==0
     finally:
         release.set();await operator.close();await service.close()
+
+
+@pytest.mark.asyncio
+async def test_late_collection_reply_cannot_replace_a_new_tab(tmp_path,monkeypatch):
+    from src.operator.client import RuntimeClient
+    service=service_type()(smoke=True,output_root=tmp_path/'runs')
+    await service.start(tmp_path/'private/control.sock');operator=RuntimeClient(service.socket_path)
+    await operator.request('start',target=(service.service_id,None))
+    await eventually(lambda:service.session_task.done())
+    app=app_type()(service.socket_path);original=service._execute
+    entered=asyncio.Event();release=asyncio.Event()
+    async def delayed(request):
+        result=await original(request)
+        if request['op']=='strategy' and request['params'].get('collection')=='fills':
+            entered.set();await release.wait()
+        return result
+    try:
+        async with app.run_test(size=(100,28)) as pilot:
+            await eventually(lambda:app.state.page is not None)
+            await pilot.press('enter')
+            await eventually(lambda:app.state.strategy=='smoke' and app.state.page is not None)
+            await pilot.press('tab')
+            await eventually(lambda:app.state.collection=='positions' and app.state.page is not None)
+            monkeypatch.setattr(service,'_execute',delayed)
+            await pilot.press('tab');await asyncio.wait_for(entered.wait(),2)
+            await pilot.press('tab');release.set()
+            await eventually(lambda:app.state.page is not None)
+            assert app.state.collection=='events'
+            assert app.state.page['items'] and all('action' in row for row in app.state.page['items'])
+            await pilot.press('q')
+    finally:release.set();await operator.close();await service.close()
+
+
+@pytest.mark.asyncio
+async def test_large_recent_findings_stay_bounded_and_disclose_eviction(tmp_path,request):
+    from src.operator.client import RuntimeClient
+    from src.paper_trading.runtime_config import retained_bytes
+    service=service_type()(smoke=True,output_root=tmp_path/'runs')
+    await service.start(tmp_path/'private/control.sock');operator=RuntimeClient(service.socket_path)
+    await operator.request('start',target=(service.service_id,None))
+    await eventually(lambda:service.session_task.done())
+    # Populate the copied projection; artifact durability has separate real-I/O tests.
+    for _ in range(150):
+        row=service.observations.finding(dict(author='agent',severity='warning',name='smoke',
+            message='m'*2048,evidence='e'*2048),'fixture')
+        row['session_id']=service.session_id;service.observations.accept_finding(row)
+    app=app_type()(service.socket_path)
+    try:
+        async with app.run_test(size=(100,28)) as pilot:
+            await eventually(lambda:app.state.page is not None)
+            await pilot.press('enter')
+            await eventually(lambda:app.state.strategy=='smoke' and app.state.page is not None)
+            await pilot.press('shift+tab')
+            await eventually(lambda:app.state.collection=='findings' and app.state.page is not None)
+            assert len(app.state.page['items'])==50 and app.state.page['evicted']
+            assert 'evicted True' in str(app.query_one('#collection').content)
+            model=retained_bytes([app.state,app._visible_rows])
+            reserve=2*(384*1024+512*1024)
+            request.node.user_properties.extend([
+                ('owned_model_bytes',model),('wire_payload_highwater_bytes',app.client.payload_highwater),
+                ('stream_decode_reserve_bytes',reserve),('total_budget_bytes',8*1024*1024),
+                ('connection_highwater',app.client.highwater)])
+            assert model+app.client.payload_highwater+reserve<8*1024*1024
+            assert app.client.highwater<=2
+            await pilot.press('q')
+        assert app.client.payload_bytes==app.client.connection_count==0
+    finally:await operator.close();await service.close()
