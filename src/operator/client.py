@@ -58,6 +58,8 @@ def decode_reply(raw: bytes, request: dict) -> dict:
             raise ValueError()
         if type(value['observed_at']) not in (int,float):
             raise ValueError()
+        if not value['ok'] and not isinstance(value.get('error'),dict):
+            raise ValueError()
         if request['service_id'] is not None:
             if value['service_id']!=request['service_id']:
                 raise ValueError()

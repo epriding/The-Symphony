@@ -10,15 +10,21 @@ from .tui_state import label
 class Confirmation(ModalScreen[bool]):
     BINDINGS=[('escape','cancel','Cancel')]
 
-    def __init__(self, action: str, target: tuple):
+    def __init__(self, action: str, target: tuple, *, ascii_mode: bool = False):
         super().__init__()
         self.action=action
         self.target=target
+        self.ascii_mode=ascii_mode
+
+    def text(self, value: object) -> str:
+        text=label(value)
+        return text.encode('ascii','backslashreplace').decode() if self.ascii_mode else text
 
     def compose(self) -> ComposeResult:
         with Vertical(classes='dialog'):
             yield Static('CONFIRM '+self.action.upper(),classes='dialog_title',markup=False)
-            yield Static(f'Service {label(self.target[0])}\nSession {label(self.target[1])}',markup=False)
+            yield Static(f'Service {self.text(self.target[0])}\nSession {self.text(self.target[1])}',markup=False)
+            yield Static('Applies to the whole session and all its strategies.',markup=False)
             warning=('Start creates a NEW paper account. It does not resume held positions.'
                 if self.action=='start' else
                 'Stop requests cleanup. Positions remain, and cleanup can fail.')

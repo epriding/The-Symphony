@@ -230,3 +230,14 @@ async def test_fragmented_large_finding_page_releases_all_payload_reservations(t
         assert client.payload_highwater>64*1024
         assert client.payload_bytes==client.connection_count==0
     finally:await client.close();server.close();await server.wait_closed()
+
+
+@pytest.mark.parametrize('error', [None, [], 'conflict'])
+def test_changed_session_with_malformed_error_is_a_structured_failure(error):
+    from src.operator.client import ClientError,decode_reply
+    request=dict(version=1,request_id='test',op='stop',params={},
+        service_id='service',session_id='old')
+    reply=dict(version=1,request_id='test',ok=False,service_id='service',
+        session_id='replacement',revision=1,observed_at=1,data=None,error=error)
+    with pytest.raises(ClientError,match='invalid_response'):
+        decode_reply(json.dumps(reply).encode()+b'\n',request)

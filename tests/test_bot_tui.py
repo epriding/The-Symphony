@@ -425,3 +425,55 @@ async def test_monochrome_ascii_display_keeps_original_strategy_identity(tmp_pat
             await pilot.press('escape')
             await pilot.press('q')
     finally:await service.close()
+
+
+@pytest.mark.asyncio
+async def test_identity_confirmation_and_control_notices_are_sanitized_without_retargeting(tmp_path,monkeypatch):
+    from src.operator.client import ClientError
+    service=service_type()(valid_config(),output_root=tmp_path/'runs')
+    service.service_id='α api_key=SYNTHETIC_DISPLAY_VALUE'
+    original=service._execute
+    hostile='[bold]literal[/bold] \x1b[2J\x1b]0;title\x07 api_key=SYNTHETIC_RECORD_VALUE'
+    async def hostile_reply(request):
+        data=await original(request)
+        if request['op']=='overview':data['reason']=hostile
+        if request['op']=='strategies':data['items'][0]['reason']=hostile
+        return data
+    monkeypatch.setattr(service,'_execute',hostile_reply)
+    await service.start(tmp_path/'private/control.sock')
+    app=app_type()(service.socket_path,ascii_mode=True)
+    entered=asyncio.Event();release=asyncio.Event();seen=[]
+    try:
+        async with app.run_test(size=(100,28)) as pilot:
+            await eventually(lambda:app.state.page is not None)
+            identity=str(app.query_one('#identity').content)
+            assert 'SYNTHETIC_DISPLAY_VALUE' not in identity and '\\u03b1' in identity
+            rendered='\n'.join(str(app.query_one(selector).content) for selector in ('#health','#record_details'))
+            rendered+=str(app.query_one('#records').get_row_at(0)[4])
+            assert '[bold]literal[/bold]' in rendered
+            assert 'SYNTHETIC_RECORD_VALUE' not in rendered and '\x1b' not in rendered and '\x07' not in rendered
+            await pilot.press('s')
+            dialog='\n'.join(str(widget.content) for widget in app.screen.query('Static'))
+            assert 'SYNTHETIC_DISPLAY_VALUE' not in dialog and dialog.isascii()
+            assert 'whole session' in dialog
+            await pilot.press('escape')
+            raw_target=app.state.target
+            async def lost_reply(op,*,target=None,params=None):
+                seen.append((op,target));entered.set();await release.wait()
+                raise ClientError('timeout',unknown=True)
+            monkeypatch.setattr(app.client,'request',lost_reply)
+            monkeypatch.setattr(app,'poll',lambda:None)
+            worker=app.send_control('start',raw_target)
+            await asyncio.wait_for(entered.wait(),2)
+            assert 'SYNTHETIC_DISPLAY_VALUE' not in str(app.query_one('#notice').content)
+            release.set();await worker.wait()
+            assert seen==[('start',raw_target)] and raw_target[0]==service.service_id
+            assert 'Outcome unknown' in str(app.query_one('#notice').content)
+            assert 'SYNTHETIC_DISPLAY_VALUE' not in str(app.query_one('#notice').content)
+            app.state.unknown='';app.state.pending=('pause',raw_target)
+            app.state.target=('replacement',None)
+            app.reconcile_control();app.render_status()
+            assert 'SYNTHETIC_DISPLAY_VALUE' not in str(app.query_one('#notice').content)
+            await pilot.press('q')
+    finally:
+        release.set();await service.close()

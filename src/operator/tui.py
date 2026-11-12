@@ -190,7 +190,7 @@ class BotApp(App[int]):
             status+=' / STALE'
         status+=f' / last response {int(age)}s ago' if age!=float('inf') else ' / no observations yet'
         self.update_text('#connection',status)
-        self.update_text('#notice',self.state.unknown or self.state.notice)
+        self.update_text('#notice',self.text(self.state.unknown or self.state.notice))
         bindings=tuple(self.control_allowed(op) for op in sorted(CONTROL_OPS))
         if bindings!=self._last_bindings:
             self._last_bindings=bindings
@@ -210,7 +210,7 @@ class BotApp(App[int]):
         self.update_text('#mode','EXECUTION  /  PAPER ONLY  |  LIVE unsupported'
             f"  |  {self.text(view.get('source'))} data  |  observe-only {self.text(view.get('observe_only'))}")
         self.update_text('#identity',
-            f'Service {self.state.target[0]}\nSession {self.state.target[1] or "none (idle)"}')
+            f'Service {self.text(self.state.target[0])}\nSession {self.text(self.state.target[1] or "none (idle)")}')
         self.update_text('#health',
             f"Strategies ready {self.text(view.get('strategy_ready_count'))}/{self.text(view.get('strategy_count'))}"
             f"  |  venues {self.text(view.get('venue_ready_count'))}/{self.text(view.get('venue_count'))}"
@@ -372,7 +372,7 @@ class BotApp(App[int]):
         if not self.control_allowed(action):
             return
         target=self.state.target
-        dialog=Confirmation(action,target)
+        dialog=Confirmation(action,target,ascii_mode=self.ascii_mode)
         self.confirmation=dialog
         def completed(approved):
             self.confirmation=None
