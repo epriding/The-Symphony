@@ -1,7 +1,7 @@
 # Terminal-ui tasks
 
 Plan: [plan.md](plan.md). Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
-Status: Approved; TU-00 complete; TU-01 in progress.
+Status: Approved; TU-01 complete; TU-02 in progress.
 Every behavioral task requires RED -> GREEN -> full regression -> compile ->
 review -> scoped commit. Run common checks from plan.md before completion.
 Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
@@ -19,7 +19,7 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ## TU-01: Discover an idle provider through bounded sockets
 
-- [ ] Implement the reusable asynchronous transport and real service tests.
+- [x] Implement the reusable asynchronous transport and real service tests.
 - Acceptance: Validated idle overview is inert; request IDs/targets and
   success/error shapes are checked. Enforce frame/object/depth/finite JSON
   limits, deadlines and cancellation; disconnect never retries a mutation.
