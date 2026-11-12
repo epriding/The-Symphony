@@ -1,7 +1,7 @@
 # Terminal-ui tasks
 
 Plan: [plan.md](plan.md). Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
-Status: Approved; TU-02 complete; TU-03 in progress.
+Status: Approved; TU-03 complete; TU-04 in progress.
 Every behavioral task requires RED -> GREEN -> full regression -> compile ->
 review -> scoped commit. Run common checks from plan.md before completion.
 Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
@@ -50,7 +50,7 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ## TU-03: Observe fresh state and reconnect honestly
 
-- [ ] Add the live overview, independent age timer and read-only reconnect.
+- [x] Add the live overview, independent age timer and read-only reconnect.
 - Acceptance: Actual overview fields and unknown values render correctly;
   non-overlapping one-second polling and three-second stale labels use local
   monotonic time. Service/session replacement invalidates prior view state.
