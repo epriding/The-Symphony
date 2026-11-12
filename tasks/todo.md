@@ -1,7 +1,7 @@
 # Terminal-ui tasks
 
 Plan: [plan.md](plan.md). Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
-Status: Proposed; awaiting one build-plan approval. All tasks below are pending.
+Status: Approved; TU-00 in progress.
 Every behavioral task requires RED -> GREEN -> full regression -> compile ->
 review -> scoped commit. Run common checks from plan.md before completion.
 Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.

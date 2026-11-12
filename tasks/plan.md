@@ -1,7 +1,7 @@
 # Implementation plan: terminal-ui
 
-Status: Proposed for one build-plan approval. Spec approved by the user after
-commit 0612c95. No terminal-ui implementation or dependency installation yet.
+Status: Approved by the user; execute autonomously in dependency order.
+Spec approved after commit 0612c95; plan approved after the CI fix a990396.
 Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
 Tasks: [todo.md](todo.md). Initiative: [SPEC.md](../SPEC.md).
 Trail: `.audit/trading-bot-tui.tsv`.
@@ -162,6 +162,7 @@ thread; do not claim it occurred or install another provider. Disclose any
 unavailable reviewer or complete host transcript. Prior GPT-6 Astra review
 covered the provider, not this plan or future TUI code.
 
-No open feature question remains. The next gate is approval of this concrete
-plan, as required by the /build auto command's single checkpoint. Once approved,
-continue through all tasks autonomously; agent-interface still needs its own spec.
+No open feature question remains. The user approved this concrete plan and
+/build auto. Continue through every task autonomously; agent-interface still
+needs its own spec. The later CI fix established a 452-pass baseline before
+Textual installation; see `.audit/ci-fix-verification.json`.

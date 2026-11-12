@@ -2,7 +2,7 @@
 
 Status: Approved by the user after commit 0612c95. Module id: `terminal-ui`.
 Library choice: Textual, explicitly requested by the user in place of curses.
-Depends on: implemented `runtime-access`. Build plan approval is pending.
+Depends on: implemented `runtime-access`. Build plan approved; implementation in progress.
 Sources: [confirmed intent](docs/intent/trading-bot-tui.md),
 [approved capability map](CAPABILITY-MAP.md),
 [provider contract](SPEC-runtime-access.md).
@@ -250,5 +250,5 @@ refresh/stale thresholds, confirmations and small-terminal behavior above are
 now the approved contract. No open feature questions remain.
 
 The new [terminal-ui plan](tasks/plan.md) and [tasks](tasks/todo.md) require the
-single build-plan checkpoint before autonomous implementation. The completed
+single build-plan checkpoint, now approved for autonomous implementation. The completed
 provider plan cannot authorize TUI code. Agent-interface remains a separate spec.

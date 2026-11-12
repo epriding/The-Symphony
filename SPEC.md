@@ -1,7 +1,7 @@
 # Spec: trading bot TUI initiative
 
 Status: Runtime provider complete and verified. Human TUI spec approved;
-terminal-ui build plan awaiting approval. Structured agent CLI spec is pending.
+terminal-ui build plan approved and implementation in progress. Structured agent CLI spec is pending.
 
 ## Objective
 
@@ -17,8 +17,8 @@ Approved decomposition: [CAPABILITY-MAP.md](CAPABILITY-MAP.md).
 
 Next module: **terminal-ui**, specified in
 [SPEC-terminal-ui.md](SPEC-terminal-ui.md), approved by the user after commit
-0612c95. Its new [plan](tasks/plan.md) and [task list](tasks/todo.md) await the
-single /build auto plan approval. After that, execute terminal-ui autonomously
+0612c95. Its new [plan](tasks/plan.md) and [task list](tasks/todo.md) have
+received the single /build auto approval. Execute terminal-ui autonomously
 in task order. The completed provider plan cannot authorize TUI code.
 
 [Runtime-access](SPEC-runtime-access.md) is complete: 450 tests and offline
@@ -56,4 +56,4 @@ Approved provider behavior, preserved for the future clients:
    not launch the service or start trading. SSH/tmux or an existing process
    manager keeps the service independent of a client terminal's lifecycle.
 
-Terminal-ui spec is approved. Review its concrete build plan before implementation.
+Terminal-ui spec is approved. Its concrete build plan is also approved.
