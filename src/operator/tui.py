@@ -1,6 +1,7 @@
 """Human terminal client. The independent service owns all trading lifetime."""
 from pathlib import Path
 import time
+import sys
 
 from textual import work
 from rich.text import Text
@@ -8,6 +9,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.widgets import DataTable, Footer, Static
+from textual.events import Resize
 
 from .client import ClientError, RuntimeClient
 from .tui_state import ViewState, label
@@ -23,21 +25,28 @@ COLUMNS={
     'events':('sequence','action','strategy','timestamp'),
     'findings':('severity','author','strategy','message'),
 }
+WIDTHS={'strategies':(18,8,7,5,20,6,9),'orders':(12,14,7,5,11,10,8),
+    'positions':(12,14,7,5,10,10),'fills':(12,12,7,5,9,8,17),
+    'events':(8,18,18,20),'findings':(8,14,16,43)}
+TITLES={'name':'Strategy','execution_mode':'Mode','active_order_count':'Orders',
+    'position_count':'Positions','market_id':'Market','remaining_quantity':'Remaining','timestamp':'Time'}
 
 
 class BotApp(App[int]):
     TITLE='SYMPHONY'
     CSS_PATH='tui.tcss'
     BINDINGS=[Binding('q','detach','Detach',priority=True),
+              ('?','help','Help'),
               Binding('ctrl+c','interrupt','Detach',show=False,priority=True),
-              Binding('tab','next_pane','Next tab',priority=True),
-              Binding('shift+tab','previous_pane','Previous tab',priority=True),
+              Binding('tab','next_pane','Next tab',priority=True,key_display='Tab'),
+              Binding('shift+tab','previous_pane','Previous tab',priority=True,show=False),
               ('n','next_page','Next page'),('b','first_page','First page'),
-              ('escape','back','Overview'),('j','down','Down'),('k','up','Up'),
+              Binding('escape','back','Overview',key_display='Esc'),
+              Binding('j','down','Down',show=False),Binding('k','up','Up',show=False),
               ('s','start','Start'),('p','pause','Pause'),('r','resume','Resume'),
-              ('x','stop','Stop'),('?','help','Help')]
+              ('x','stop','Stop')]
 
-    def __init__(self, socket_path: str | Path, *, clock=time.monotonic):
+    def __init__(self, socket_path: str | Path, *, clock=time.monotonic, ascii_mode: bool | None = None):
         super().__init__()
         self.animation_level='none'
         self.client=RuntimeClient(socket_path)
@@ -51,6 +60,14 @@ class BotApp(App[int]):
         self._command_worker=None
         self.confirmation=None
         self._last_bindings=None
+        self._detaching=False
+        self._terminal_usable=False
+        encoding=(sys.stdout.encoding or 'utf-8').lower().replace('-','')
+        self.ascii_mode=ascii_mode if ascii_mode is not None else encoding not in ('utf8','utf8sig')
+
+    def text(self, value: object) -> str:
+        text=label(value)
+        return text.encode('ascii','backslashreplace').decode() if self.ascii_mode else text
 
     @property
     def overview(self):
@@ -59,6 +76,7 @@ class BotApp(App[int]):
     def compose(self) -> ComposeResult:
         yield Static('SYMPHONY  /  PAPER BOT',id='banner',markup=False)
         yield Static('Connecting to local service...',id='connection',markup=False)
+        yield Static('Resize terminal to at least 100x28. q detaches.',id='resize',markup=False)
         with Vertical(id='body'):
             yield Static('SESSION  /  unknown',id='session',markup=False)
             yield Static('EXECUTION  /  PAPER ONLY  |  LIVE unsupported',id='mode',markup=False)
@@ -74,12 +92,29 @@ class BotApp(App[int]):
         yield Footer()
 
     def on_mount(self) -> None:
+        if self.ascii_mode:self.add_class('ascii')
         self.set_interval(1,self.poll)
         self.set_interval(.2,self.render_status)
         self.poll()
         self.query_one('#records',DataTable).focus()
+        self.update_size()
+
+    def on_resize(self, event: Resize) -> None:
+        self.update_size(event.size)
+
+    def update_size(self, size=None) -> None:
+        if not self.query('#body'):
+            return
+        size=self.size if size is None else size
+        small=size.width<100 or size.height<28
+        self._terminal_usable=not small
+        self.query_one('#body').display=not small
+        self.query_one('#resize').display=small
+        if small and self.confirmation is not None:
+            self.confirmation.dismiss(False)
 
     def poll(self) -> None:
+        if self._detaching:return
         if self._read_worker is not None and not self._read_worker.is_finished:
             return
         if self.clock()>=self._next_attempt:
@@ -90,12 +125,14 @@ class BotApp(App[int]):
         try:
             reply=await self.client.request('overview')
         except ClientError as error:
+            if self._detaching:return
             self.state.connected=False
             self.state.connection='Disconnected / '+error.code+' / read-only retry; b refreshes'
             self._next_attempt=self.clock()+self._retry_delay
             self._retry_delay=min(5,self._retry_delay*2)
             self.render_status()
             return
+        if self._detaching:return
         previous=self.state.generation
         self.state.accept_overview(reply,self.clock())
         if previous!=self.state.generation:
@@ -146,6 +183,7 @@ class BotApp(App[int]):
             widget.update(content)
 
     def render_status(self) -> None:
+        if self._detaching:return
         age=self.state.age(self.clock())
         status=self.state.connection
         if not self.state.fresh(self.clock()):
@@ -160,43 +198,52 @@ class BotApp(App[int]):
         view=self.overview
         if view is None:
             return
+        alert=('CLEANUP UNRESOLVED' if view['cleanup_unresolved'] else
+            'FINDING APPEND PENDING' if view['finding_append_pending'] else
+            'FINDINGS UNAVAILABLE' if not view['finding_publication_available'] else '')
         self.update_text('#session',
-            f"SESSION  /  {label(view['lifecycle'])}  |  operator {label(view.get('operator_state'))}")
+            f"SESSION  /  {self.text(view['lifecycle'])}  |  operator {self.text(view.get('operator_state'))}"
+            +('  |  '+alert if alert else ''))
         pause=('Strategy decisions paused' if view['operator_state']=='paused' else
             'Pausing strategy decisions' if view['operator_state']=='pausing' else 'Pause gates strategy decisions')
         self.update_text('#control_note',pause+'; existing orders and risk actions can continue.')
         self.update_text('#mode','EXECUTION  /  PAPER ONLY  |  LIVE unsupported'
-            f"  |  {label(view.get('source'))} data  |  observe-only {label(view.get('observe_only'))}")
+            f"  |  {self.text(view.get('source'))} data  |  observe-only {self.text(view.get('observe_only'))}")
         self.update_text('#identity',
             f'Service {self.state.target[0]}\nSession {self.state.target[1] or "none (idle)"}')
         self.update_text('#health',
-            f"Strategies ready {label(view.get('strategy_ready_count'))}/{label(view.get('strategy_count'))}"
-            f"  |  venues {label(view.get('venue_ready_count'))}/{label(view.get('venue_count'))}"
-            f"  |  orders {label(view.get('active_order_count'))}  |  positions {label(view.get('position_count'))}\n"
-            f"Observation available {label(view.get('observation_available'))}  |  {label(view.get('reason'))}\n"
-            f"Snapshot {label(view.get('snapshot_at'))}  |  bot clock {label(view.get('market_time'))}")
+            f"Strategies ready {self.text(view.get('strategy_ready_count'))}/{self.text(view.get('strategy_count'))}"
+            f"  |  venues {self.text(view.get('venue_ready_count'))}/{self.text(view.get('venue_count'))}"
+            f"  |  orders {self.text(view.get('active_order_count'))}  |  positions {self.text(view.get('position_count'))}\n"
+            f"Observation available {self.text(view.get('observation_available'))}  |  {self.text(view.get('reason'))}\n"
+            f"Snapshot {self.text(view.get('snapshot_at'))}  |  bot clock {self.text(view.get('market_time'))}")
 
     def action_detach(self) -> None:
+        self._detaching=True
+        self.workers.cancel_all()
         self.exit(0)
 
     def render_records(self) -> None:
+        if self._detaching:return
         table=self.query_one('#records',DataTable)
         old_row=table.cursor_row
         selected=self._visible_rows[old_row].get('id') if old_row<len(self._visible_rows) else None
         kind=self.state.collection if self.state.strategy is not None else 'strategies'
         key=(self.state.generation,self.state.view_generation)
         table.clear(columns=True)
-        table.add_columns(*(field.replace('_',' ').title() for field in COLUMNS[kind]))
+        for field,width in zip(COLUMNS[kind],WIDTHS[kind]):
+            table.add_column(TITLES.get(field,field.replace('_',' ').title()),width=width)
         self._visible_rows=self.state.page['items'] if self.state.page is not None else []
         index=0
         for i,row in enumerate(self._visible_rows):
             table.add_row(*(Text('unrouted' if kind=='strategies' and field=='execution_mode'
-                and row.get(field) is None else label(row.get(field))) for field in COLUMNS[kind]),key=str(i))
+                and row.get(field) is None else self.text(row.get(field)),overflow='crop',no_wrap=True)
+                for field in COLUMNS[kind]),key=str(i))
             if key==self._table_key and row.get('id')==selected:index=i
         self._table_key=key
         if self._visible_rows:table.move_cursor(row=index,animate=False)
         page=self.state.page
-        title=f'{self.state.strategy or "ALL STRATEGIES"} / {kind}'
+        title=f'{self.text(self.state.strategy) if self.state.strategy is not None else "ALL STRATEGIES"} / {kind}'
         if page is None:
             title+=' / unavailable or loading'
         else:
@@ -208,24 +255,25 @@ class BotApp(App[int]):
         self.render_details()
 
     def render_details(self) -> None:
+        if self._detaching:return
         lines=[]
         if self.state.strategy is None and self.overview:
             for key in ('recent_findings','recent_events'):
                 rows=self.overview.get(key,[])
                 lines.append(key.replace('_',' ').upper()+f' / {len(rows)} retained overview entries')
                 for row in rows:
-                    lines.append(' | '.join(f'{label(k)}: {label(v)}' for k,v in row.items()))
+                    lines.append(' | '.join(f'{self.text(k)}: {self.text(v)}' for k,v in row.items()))
             lines.append('Connection freshness does not prove fresh quotes. Recent windows are not full history.')
         index=self.query_one('#records',DataTable).cursor_row
         if index<len(self._visible_rows):
             lines.append('SELECTED RECORD / Enter focuses this scrollable pane')
-            lines.extend(f'{label(k)}: {label(v)}' for k,v in self._visible_rows[index].items())
+            lines.extend(f'{self.text(k)}: {self.text(v)}' for k,v in self._visible_rows[index].items())
         if self.state.summary:
             lines.append('STRATEGY SUMMARY')
-            lines.extend(f'{label(k)}: {label(v)}' for k,v in self.state.summary.items())
+            lines.extend(f'{self.text(k)}: {self.text(v)}' for k,v in self.state.summary.items())
         if self.overview:
             lines.append('OVERVIEW FIELDS')
-            lines.extend(f'{label(k)}: {label(v)}' for k,v in self.overview.items()
+            lines.extend(f'{self.text(k)}: {self.text(v)}' for k,v in self.overview.items()
                 if k not in ('recent_events','recent_findings'))
         self.query_one('#record_details',Static).update('\n'.join(lines) or 'No rows in this collection scope.')
 
@@ -291,10 +339,13 @@ class BotApp(App[int]):
         else:self.query_one('#detail_scroll').scroll_relative(y=-1,animate=False)
 
     def action_interrupt(self) -> None:
+        self._detaching=True
+        self.workers.cancel_all()
         self.exit(130,return_code=130)
 
     def control_allowed(self, action: str) -> bool:
-        if (not self.state.fresh(self.clock()) or self.overview is None
+        if (self._detaching or not self.state.fresh(self.clock()) or self.overview is None
+                or not self._terminal_usable
                 or len(self.screen_stack)>1
                 or self._command_worker is not None and not self._command_worker.is_finished):
             return False
@@ -395,6 +446,8 @@ class BotApp(App[int]):
             self.state.notice=f'Observed {action} / lifecycle {phase}; inspect readiness, reason and cleanup state.'
 
     async def on_unmount(self) -> None:
+        self._detaching=True
+        self.workers.cancel_all()
         await self.client.close()
 
 

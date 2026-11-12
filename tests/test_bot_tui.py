@@ -302,7 +302,8 @@ async def test_blocked_observation_does_not_block_confirmed_stop_or_detach(tmp_p
             # the real in-process risk loop prevents that. Send the same public
             # input events and synchronize on visible state instead of idleness.
             app.post_message(Key('x','x'))
-            await eventually(lambda:app.confirmation is not None and len(app.screen_stack)>1)
+            await eventually(lambda:app.confirmation is not None and len(app.screen_stack)>1
+                and app.screen.is_mounted)
             field=app.screen.query_one('#confirm_action')
             field.post_message(Paste('stop'))
             await eventually(lambda:field.value=='stop')
@@ -380,3 +381,47 @@ async def test_large_recent_findings_stay_bounded_and_disclose_eviction(tmp_path
             await pilot.press('q')
         assert app.client.payload_bytes==app.client.connection_count==0
     finally:await operator.close();await service.close()
+
+
+@pytest.mark.asyncio
+async def test_small_terminal_requires_resize_and_restores_a_usable_layout(tmp_path):
+    service=service_type()(valid_config(),output_root=tmp_path/'runs')
+    await service.start(tmp_path/'private/control.sock');app=app_type()(service.socket_path)
+    try:
+        async with app.run_test(size=(80,20)) as pilot:
+            assert app.query_one('#resize').display and not app.query_one('#body').display
+            await pilot.resize_terminal(100,28)
+            await eventually(lambda:app.state.page is not None)
+            assert not app.query_one('#resize').display and app.query_one('#body').display
+            table=app.query_one('#records')
+            assert table.region.height>=5
+            assert sum(column.get_render_width(table) for column in table.columns.values())<=table.content_size.width
+            assert app.query_one('#detail_scroll').region.bottom<=27
+            target=app.state.target
+            await pilot.resize_terminal(60,15)
+            await pilot.press('s')
+            assert app.confirmation is None and app.state.target==target and service.session_id is None
+            await pilot.press('q')
+    finally:await service.close()
+
+
+@pytest.mark.asyncio
+async def test_monochrome_ascii_display_keeps_original_strategy_identity(tmp_path,monkeypatch):
+    from bot_v1_support import strategy_config
+    monkeypatch.setenv('NO_COLOR','1')
+    service=service_type()(valid_config(strategies=[strategy_config('α')]),output_root=tmp_path/'runs')
+    await service.start(tmp_path/'private/control.sock')
+    app=app_type()(service.socket_path,ascii_mode=True)
+    try:
+        async with app.run_test(size=(100,28)) as pilot:
+            await eventually(lambda:app.state.page is not None)
+            assert app.no_color and app.query_one('#body').styles.border_top[0]=='ascii'
+            assert '\\u03b1' in str(app.query_one('#records').get_row_at(0)[0])
+            await pilot.press('enter')
+            await eventually(lambda:app.state.strategy=='α' and app.state.page is not None)
+            assert '\\u03b1' in str(app.query_one('#collection').content)
+            await pilot.press('s')
+            assert app.screen.query_one('#confirm_action').styles.border_top[0]=='ascii'
+            await pilot.press('escape')
+            await pilot.press('q')
+    finally:await service.close()

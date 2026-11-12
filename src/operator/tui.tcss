@@ -1,26 +1,22 @@
 Screen { background: #101820; color: #d9e4ee; }
 #banner { height: 3; padding: 1 2; background: #1b2c3a; color: #8bded0; text-style: bold; }
-#connection { height: 2; padding: 0 2; color: #a9bed0; }
-#body { height: 1fr; margin: 0 2 1 2; padding: 1 2; border: round #365064; }
-#session { height: auto; margin-bottom: 1; text-style: bold; }
-#mode { height: auto; color: #8bded0; margin-bottom: 1; }
-#identity { height: auto; color: #a9bed0; margin-bottom: 1; }
-#health { height: auto; margin-bottom: 1; }
-#notice { height: auto; color: #edc47c; }
-Footer { background: #1b2c3a; }
-#connection { height: 1; }
-#body { padding: 0 1; margin-bottom: 0; }
-#session, #mode { height: 1; margin-bottom: 0; }
-#identity { height: 2; margin-bottom: 0; }
-#health { height: 3; margin-bottom: 0; }
-#notice { height: 2; }
+#connection { height: 1; padding: 0 2; color: #a9bed0; }
+#resize { display: none; height: 1fr; content-align: center middle; color: #edc47c; }
+#body { height: 1fr; margin: 0 2; padding: 0 1; border: round #365064; }
+#session { height: 1; text-style: bold; }
+#mode { height: 1; color: #8bded0; }
+#identity { height: 2; color: #a9bed0; }
+#health { height: 3; }
+#notice { height: 2; color: #edc47c; }
+#control_note { height: 1; color: #edc47c; }
 #collection { height: 2; color: #8bded0; }
 #records { height: 1fr; min-height: 5; }
 #records:focus { border: solid #8bded0; }
+DataTable > .datatable--cursor { text-style: bold reverse; }
 #detail_scroll { height: 4; border-top: solid #365064; }
 #detail_scroll:focus { border: solid #8bded0; }
 #record_details { height: auto; }
-#control_note { height: 1; color: #edc47c; }
+Footer { background: #1b2c3a; }
 Confirmation, Help { align: center middle; background: #101820 85%; }
 .dialog { width: 80; max-width: 95%; height: auto; max-height: 95%; padding: 1 2; background: #1b2c3a; border: round #8bded0; }
 .dialog Static { height: auto; }
@@ -28,3 +24,7 @@ Confirmation, Help { align: center middle; background: #101820 85%; }
 #confirm_warning { margin: 1 0; color: #edc47c; }
 #confirm_action { margin: 1 0; }
 #confirm_error { color: #ef9696; }
+.ascii #body, .ascii #records:focus, .ascii #detail_scroll:focus,
+.ascii .dialog, .ascii Input, .ascii Input:focus { border: ascii #8bded0; }
+.ascii #detail_scroll { border-top: ascii #365064; }
+.ascii #records, .ascii #detail_scroll, .ascii .dialog { scrollbar-size: 0 0; }

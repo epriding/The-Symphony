@@ -1,7 +1,7 @@
 # Terminal-ui tasks
 
 Plan: [plan.md](plan.md). Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
-Status: Approved; TU-06 complete; TU-07 in progress.
+Status: Approved; TU-07 complete; TU-08 in progress.
 Every behavioral task requires RED -> GREEN -> full regression -> compile ->
 review -> scoped commit. Run common checks from plan.md before completion.
 Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
@@ -111,7 +111,7 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ## TU-07: Verify real terminal lifecycle and appearance
 
-- [ ] Complete PTY/process acceptance and presentation checks.
+- [x] Complete PTY/process acceptance and presentation checks.
 - Acceptance: q/Ctrl-C/client kill leave a persistent synthetic service on the
   same session with advancing inputs/risk; expected exit codes and terminal
   restoration hold. Resize, focus, text input, monochrome/ASCII and long text work.
@@ -125,7 +125,7 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ### Checkpoint: process independence and bounded failure
 
-- [ ] Full checks, resource bounds and real process acceptance pass. Review
+- [x] Full checks, resource bounds and real process acceptance pass. Review
   actual terminal output; headless tests alone cannot complete this checkpoint.
 
 ## TU-08: Document operation and audit the completed TUI

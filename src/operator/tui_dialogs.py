@@ -28,7 +28,9 @@ class Confirmation(ModalScreen[bool]):
             yield Static('',id='confirm_error',markup=False)
 
     def on_mount(self) -> None:
-        self.query_one(Input).focus()
+        # A target change or resize can dismiss this screen during mounting.
+        if self.is_current:
+            self.query_one(Input).focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.value.strip()==self.action:
