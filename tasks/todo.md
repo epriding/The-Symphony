@@ -1,6 +1,6 @@
 # Runtime-access tasks
 
-Plan: [plan.md](plan.md). Status: Approved; RA-09 in progress.
+Plan: [plan.md](plan.md). Status: Complete; verified on 2026-11-12.
 Every behavior task uses RED -> GREEN -> full regression -> compile -> review
 -> commit. Also run fresh offline smoke/replay after runner, capture or CLI
 changes. Preserve concrete test results in `.audit/` and log decisions in
@@ -160,7 +160,7 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ## RA-09: Document operation and audit the completed module
 
-- [ ] Publish service/protocol instructions and verify RA01–RA14 traceability.
+- [x] Publish service/protocol instructions and verify RA01–RA14 traceability.
 - Acceptance: Docs explain setup, explicit start, detach vs service shutdown,
   SSH/tmux, pause/risk semantics, unknown outcomes, fresh accounts, paper-only
   limits and retained artifacts. Every acceptance claim resolves to passing
@@ -176,6 +176,6 @@ changes. Preserve concrete test results in `.audit/` and log decisions in
 
 ### Checkpoint: ready for provider review
 
-- [ ] No unchecked task or acceptance criterion remains; commits are scoped,
+- [x] No unchecked task or acceptance criterion remains; commits are scoped,
   working tree is clean and audit limitations are explicit. No deployment,
   TUI/client implementation, credentials or real-money execution occurred.

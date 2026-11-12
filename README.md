@@ -48,6 +48,11 @@ load a local `.env` file; keep credentials local. Smoke/replay do not load it.
 Authenticated feed validation and empirical execution calibration remain separate
 from synthetic tests.
 
+The [local control service](docs/BOT_CONTROL.md) provides an initially idle,
+private Unix-socket interface with shared strategy/trade observations, diagnostic
+findings and explicit paper-session controls. It runs independently of attached
+clients. The full-screen TUI and structured agent CLI are subsequent modules.
+
 The [code guide](docs/CODE_GUIDE.md), [paper execution guide](docs/PAPER_TRADING.md),
 [risk manager guide](docs/RISK_MANAGER.md) and [documentation index](docs/_index.md)
 cover the component APIs. Existing session/demo commands remain supported:

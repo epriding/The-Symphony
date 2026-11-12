@@ -1,6 +1,6 @@
 # Implementation plan: runtime-access
 
-Status: Approved by the user; execute autonomously in dependency order.
+Status: Approved by the user; completed and verified on 2026-11-12.
 Spec: [SPEC-runtime-access.md](../SPEC-runtime-access.md), approved by the user
 after commit c8b3ba8. Initiative: [SPEC.md](../SPEC.md).
 Task list: [todo.md](todo.md). Decision trail: `.audit/trading-bot-tui.tsv`.
@@ -141,6 +141,9 @@ self-review as independent review; disclose this if it remains unavailable.
 
 ## Open questions
 
-None about the approved feature scope. Local Python tooling still needs repair
-before verification can run. The next human gate is approval of this plan;
-after that execute its tasks in order without manual stepping.
+None about the completed provider scope. RA-00 restored local tooling and all
+tasks are complete. Final evidence: 450 passing tests, compilation/dependency
+checks, fresh offline smoke/replay and the documented socket probe. See
+`.audit/acceptance-trace.json` and `.audit/trading-bot-tui.tsv` for traceability.
+The original baseline section above records pre-implementation conditions.
+This completed plan does not authorize either client module.

@@ -24,6 +24,11 @@ algorithms and real-money execution are outside this runtime's scope.
 
 ## Relationships
 
+The [local control guide](BOT_CONTROL.md) describes independent client access,
+shared views, operator pause/resume, service lifecycle and diagnostic findings.
+Only explicitly operator-enabled runs use capture schema 4 for these controls;
+the existing run/smoke paths retain schema 3. Readers accept input schemas 1–4.
+
 The [simulator guide](PAPER_TRADING.md) explains execution, fees and existing
 session APIs. [Code ownership](CODE_GUIDE.md) explains the coordinator and ledger.
 

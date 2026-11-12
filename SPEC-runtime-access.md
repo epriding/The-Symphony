@@ -1,6 +1,7 @@
 # Spec: runtime-access
 
-Status: Approved by the user. Module id: `runtime-access`.
+Status: Approved by the user; implemented and verified on 2026-11-12.
+Module id: `runtime-access`.
 Depends on: existing `BotRunner`. Provides: the shared contract for
 `terminal-ui` and `agent-interface`; neither client is implemented by this spec.
 
@@ -49,7 +50,7 @@ python3 main.py smoke --output "$bot_check_dir/smoke"
 python3 main.py replay --capture "$bot_check_dir/smoke" --output "$bot_check_dir/replay"
 ```
 
-Proposed service commands (do not exist yet):
+Implemented service commands:
 
 ```bash
 # Offline fixture service; remains available after a finite smoke session ends.
@@ -377,13 +378,20 @@ display refresh, stale banners, keyboard behavior, JSON CLI and UX acceptance.
   shell execution, autonomous fixes, credential publication, forced liquidation,
   capture deletion, weakening/skipping tests, or hidden background trading.
 
-## Open questions for approval
+## Approval and completion
 
-No unresolved technical choice blocks drafting. The proposed global controls,
-pause behavior, explicit persistent service, and fresh-session restart semantics
-are user-visible decisions that require approval of this spec. They are not
-claimed to have been confirmed in the earlier intent interview.
+The user approved this contract and its build plan in separate turns. The
+authorized history prerequisite is documented in
+[the history decision record](docs/decisions/002-deterministic-history-order.md).
+All provider tasks are complete: 450 tests passed, compilation and dependency
+checks passed, and fresh offline smoke/replay and documented socket inspection
+passed. The local `.audit/acceptance-trace.json` maps RA01–RA14 to existing tests
+and verification artifacts; `.audit/trading-bot-tui.tsv` is the canonical trail.
 
-After approval, create the runtime-access plan and tasks. Terminal-ui and
-agent-interface remain separate specifications; approving this provider does
-not approve their UI design, dependency choice, or CLI details.
+GPT-6 Astra identified lifecycle gaps during review; the parent fixed them and
+verified new regressions. There was no independent post-fix rerun, available
+cross-family reviewer, or complete host transcript audit. Offline fixtures do
+not establish production latency, execution quality or whole-process RSS limits.
+
+Terminal-ui and agent-interface remain separate specifications; completing this
+provider does not approve their UI design, dependency choice, or CLI details.
