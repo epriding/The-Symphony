@@ -14,8 +14,9 @@ code:
 
 The service owns one paper-bot session at a time and provides the same bounded
 observations and controls to human and agent clients. Its process runs
-independently of its clients. This is the provider module: the full-screen TUI
-and structured agent command-line client are separate, not yet implemented.
+independently of its clients. The [Textual terminal interface](BOT_TUI.md)
+attaches to this provider. The structured agent command-line client remains
+a separate, unimplemented module.
 The [approved module map](../CAPABILITY-MAP.md) records those boundaries.
 
 ## Start a service, then a session

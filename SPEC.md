@@ -1,7 +1,7 @@
 # Spec: trading bot TUI initiative
 
-Status: Runtime provider complete and verified. Human TUI spec approved;
-terminal-ui build plan approved and implementation in progress. Structured agent CLI spec is pending.
+Status: Runtime provider and human Textual TUI implemented and verified.
+Structured agent CLI specification is pending.
 
 ## Objective
 
@@ -15,11 +15,11 @@ Approved decomposition: [CAPABILITY-MAP.md](CAPABILITY-MAP.md).
 
 ## Active module and build selection
 
-Next module: **terminal-ui**, specified in
+Completed module: **terminal-ui**, specified in
 [SPEC-terminal-ui.md](SPEC-terminal-ui.md), approved by the user after commit
 0612c95. Its new [plan](tasks/plan.md) and [task list](tasks/todo.md) have
-received the single /build auto approval. Execute terminal-ui autonomously
-in task order. The completed provider plan cannot authorize TUI code.
+received the single /build auto approval and have been executed. See the
+[operating guide](docs/BOT_TUI.md) and [acceptance trace](docs/verification/terminal-ui.md).
 
 [Runtime-access](SPEC-runtime-access.md) is complete: 450 tests and offline
 verification passed. See [the service guide](docs/BOT_CONTROL.md).
@@ -40,8 +40,8 @@ Completing this provider alone does not deliver the requested TUI. The
 
 The active module spec defines all six required specification areas: objective,
 full commands, project structure, code style, testing strategy, and boundaries.
-Its commands distinguish existing verification commands from proposed commands
-that do not exist yet. No TUI or structured agent CLI implementation has started.
+Its commands and focused test files are implemented. The structured agent CLI
+has not been implemented.
 
 ## Review decisions
 

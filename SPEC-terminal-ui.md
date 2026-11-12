@@ -2,7 +2,8 @@
 
 Status: Approved by the user after commit 0612c95. Module id: `terminal-ui`.
 Library choice: Textual, explicitly requested by the user in place of curses.
-Depends on: implemented `runtime-access`. Build plan approved; implementation in progress.
+Depends on: implemented `runtime-access`. Build plan approved and executed;
+human client implemented and verified.
 Sources: [confirmed intent](docs/intent/trading-bot-tui.md),
 [approved capability map](CAPABILITY-MAP.md),
 [provider contract](SPEC-runtime-access.md).
@@ -31,12 +32,12 @@ automating keystrokes. Agent diagnosis and code repair remain external.
 ## Tech stack and interface
 
 Python 3.12, Textual, bounded asyncio Unix-socket I/O, JSON, pytest and
-pytest-asyncio. Pin the new direct dependency as `textual==8.2.8` during
-implementation, without optional syntax-highlighting or development extras.
+pytest-asyncio. The direct dependency is pinned as `textual==8.2.8`, without
+optional syntax-highlighting or development extras.
 [Published package metadata](https://pypi.org/project/textual/8.2.8/) declares
 Python >=3.9,<4 compatibility, including our Python 3.12 runtime. Dependency
-resolution and the full regression remain implementation checks, not claims
-that the package has already been installed or tested with this bot.
+resolution and full regression passed in the implementation environment; see
+[the acceptance trace](docs/verification/terminal-ui.md) for evidence and limits.
 
 Use Textual's built-in widgets, screens and
 [TCSS stylesheets](https://textual.textualize.io/guide/CSS/) for consistent
@@ -154,7 +155,7 @@ Existing offline provider setup, in a separately managed persistent terminal:
 venv/bin/python main.py serve --smoke --socket "$HOME/.local/state/symphony/control.sock" --output-root "$HOME/.local/state/symphony/runs"
 ```
 
-Proposed TUI command, which does not exist yet:
+Implemented TUI attach command:
 
 ```bash
 venv/bin/python main.py tui --socket "$HOME/.local/state/symphony/control.sock"
@@ -171,19 +172,21 @@ venv/bin/python -m pip check
 git diff --check
 ```
 
-Focused test files above are proposed, not yet created. Record real terminal
-verification through PTYs with the service running in a separate process.
+Focused tests above exist. Actual PTY/process checks also live in
+`tests/test_bot_tui_process.py` and keep the service in a separate process.
 
 ## Project structure
 
-- `src/operator/client.py`: proposed reusable bounded protocol client at the
-  provider boundary, usable by both future clients without importing the TUI.
+- `src/operator/client.py`: reusable bounded protocol client at the
+  provider boundary, usable by human and future agent clients without importing
+  the TUI.
 - `src/operator/tui.py`: terminal views, navigation and UI state. Split further
   only for clarity; no trading/accounting logic belongs here.
 - `src/operator/tui.tcss`: Textual styles for layout, status, focus and tables.
-- `requirements.txt`: pin the user-requested Textual dependency during implementation.
+- `requirements.txt`: pins the user-requested Textual dependency.
 - `main.py`: explicit `tui` entrypoint; preserve all existing commands.
-- `tests/test_bot_client.py`, `tests/test_bot_tui.py`: transport/state and PTY
+- `tests/test_bot_client.py`, `tests/test_bot_tui.py`,
+  `tests/test_bot_tui_process.py`: transport, state, interaction and PTY process
   integration tests, reusing offline service fixtures.
 - `docs/BOT_TUI.md`: setup, keys, SSH, freshness, controls and limitations.
 - `tasks/plan.md`, `tasks/todo.md`: new scoped plan after approval; completed
@@ -252,3 +255,7 @@ now the approved contract. No open feature questions remain.
 The new [terminal-ui plan](tasks/plan.md) and [tasks](tasks/todo.md) require the
 single build-plan checkpoint, now approved for autonomous implementation. The completed
 provider plan cannot authorize TUI code. Agent-interface remains a separate spec.
+
+Implementation completed under the approved plan. See [operation](docs/BOT_TUI.md),
+[acceptance and review limits](docs/verification/terminal-ui.md), and
+[ADR-003](docs/decisions/003-textual-terminal-client.md).

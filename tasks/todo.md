@@ -1,7 +1,7 @@
 # Terminal-ui tasks
 
 Plan: [plan.md](plan.md). Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
-Status: Approved; TU-07 complete; TU-08 in progress.
+Status: Complete. TU-00 through TU-08 and all checkpoints verified.
 Every behavioral task requires RED -> GREEN -> full regression -> compile ->
 review -> scoped commit. Run common checks from plan.md before completion.
 Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
@@ -130,7 +130,7 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ## TU-08: Document operation and audit the completed TUI
 
-- [ ] Publish the verified offline/SSH workflow and acceptance trace.
+- [x] Publish the verified offline/SSH workflow and acceptance trace.
 - Acceptance: Commands, keys, fresh-account/pause semantics, stale/unknown
   outcomes and limits are documented. Every TU01–TU10 criterion resolves to
   passing evidence; review/trail limitations are explicit and branch is clean.
@@ -143,5 +143,9 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ### Checkpoint: ready for human review
 
-- [ ] All tasks/criteria complete with scoped commits and recorded evidence.
+- [x] All tasks/criteria complete with scoped commits and recorded evidence.
   No deployment, public credentials, live execution or agent CLI occurred.
+
+Final verification: 521 tests passed; compileall, pip check, fresh smoke/replay,
+actual documented service/TUI PTY path and documentation links passed. See
+[acceptance and review limits](../docs/verification/terminal-ui.md).

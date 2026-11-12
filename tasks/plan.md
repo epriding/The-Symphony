@@ -1,6 +1,6 @@
 # Implementation plan: terminal-ui
 
-Status: Approved by the user; execute autonomously in dependency order.
+Status: Complete under user-approved autonomous execution.
 Spec approved after commit 0612c95; plan approved after the CI fix a990396.
 Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
 Tasks: [todo.md](todo.md). Initiative: [SPEC.md](../SPEC.md).
@@ -166,3 +166,12 @@ No open feature question remains. The user approved this concrete plan and
 /build auto. Continue through every task autonomously; agent-interface still
 needs its own spec. The later CI fix established a 452-pass baseline before
 Textual installation; see `.audit/ci-fix-verification.json`.
+
+## Completion
+
+TU-00 through TU-08 and all checkpoints are complete. Final regression passed
+521 tests; compilation, dependency checks, fresh offline smoke/replay, the
+documented service/TUI PTY path and local documentation links passed.
+[The acceptance trace](../docs/verification/terminal-ui.md) records review
+findings, their fixes, memory/deadline limits and unavailable cross-family/
+full-transcript review. The structured agent CLI remains outside this plan.

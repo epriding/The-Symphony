@@ -32,7 +32,7 @@ project, not three separately deployed services.
 | Module | Spec | State |
 |---|---|---|
 | runtime-access | [SPEC-runtime-access.md](SPEC-runtime-access.md) | Implemented and verified; 450 tests passed |
-| terminal-ui | [SPEC-terminal-ui.md](SPEC-terminal-ui.md) | Spec and plan approved; implementation in progress |
-| agent-interface | Not written | Specify after the provider contract is approved |
+| terminal-ui | [SPEC-terminal-ui.md](SPEC-terminal-ui.md) | Implemented and verified; see [acceptance](docs/verification/terminal-ui.md) |
+| agent-interface | Not written | Separate specification and approval pending |
 
 The root [SPEC.md](SPEC.md) selects the active module for `/build auto`.

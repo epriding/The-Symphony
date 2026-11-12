@@ -51,7 +51,13 @@ from synthetic tests.
 The [local control service](docs/BOT_CONTROL.md) provides an initially idle,
 private Unix-socket interface with shared strategy/trade observations, diagnostic
 findings and explicit paper-session controls. It runs independently of attached
-clients. The full-screen TUI and structured agent CLI are subsequent modules.
+clients. Attach the [Textual terminal interface](docs/BOT_TUI.md) with:
+
+```bash
+venv/bin/python main.py tui --socket "$HOME/.local/state/symphony/control.sock"
+```
+
+The separate structured agent CLI remains a subsequent module.
 
 The [code guide](docs/CODE_GUIDE.md), [paper execution guide](docs/PAPER_TRADING.md),
 [risk manager guide](docs/RISK_MANAGER.md) and [documentation index](docs/_index.md)
