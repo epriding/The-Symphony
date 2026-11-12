@@ -108,8 +108,9 @@ async def test_poll_cadence_does_not_drift_by_response_latency(tmp_path,monkeypa
     service=service_type()(valid_config(),output_root=tmp_path/'runs')
     now=[100.0];calls=[];original=service._execute
     async def latency(request):
-        calls.append(request['op'])
-        if len(calls)==1:now[0]+=.25
+        if request['op']=='overview':
+            calls.append(request['op'])
+            if len(calls)==1:now[0]+=.25
         return await original(request)
     monkeypatch.setattr(service,'_execute',latency)
     await service.start(tmp_path/'private/control.sock')
@@ -120,5 +121,65 @@ async def test_poll_cadence_does_not_drift_by_response_latency(tmp_path,monkeypa
             now[0]=101.0
             app.poll()  # The next one-second timer tick, not one second after reply.
             await eventually(lambda:len(calls)>=2)
+            await pilot.press('q')
+    finally:await service.close()
+
+
+@pytest.mark.asyncio
+async def test_strategy_detail_matches_real_fills_and_renders_findings_literally(tmp_path):
+    from src.operator.client import RuntimeClient
+    service=service_type()(smoke=True,output_root=tmp_path/'runs')
+    await service.start(tmp_path/'private/control.sock')
+    operator=RuntimeClient(service.socket_path)
+    await operator.request('start',target=(service.service_id,None))
+    await eventually(lambda:service.session_task.done())
+    target=(service.service_id,service.session_id)
+    await operator.request('publish_finding',target=target,params={
+        'name':'smoke','author':'agent','severity':'warning',
+        'message':'[bold]literal diagnostic[/bold]','evidence':'inert/path.py:4'})
+    app=app_type()(service.socket_path)
+    try:
+        async with app.run_test(size=(100,28)) as pilot:
+            await eventually(lambda:app.state.page is not None)
+            assert app.state.page['items'][0]['execution_mode']=='PAPER'
+            app.query_one('#records').focus()
+            await pilot.press('enter')
+            await eventually(lambda:app.state.strategy=='smoke' and app.state.page is not None)
+            await pilot.press('tab','tab')
+            await eventually(lambda:app.state.collection=='fills' and app.state.page is not None)
+            assert app.state.page['items']==list(service.observations.fills)
+            assert 'recent' in str(app.query_one('#collection').content)
+            await pilot.press('tab','tab')
+            await eventually(lambda:app.state.collection=='findings' and app.state.page is not None)
+            assert '[bold]literal diagnostic[/bold]' in str(app.query_one('#record_details').content)
+            assert 'inert/path.py:4' in str(app.query_one('#record_details').content)
+            await pilot.press('escape')
+            await eventually(lambda:app.state.strategy is None)
+            await pilot.press('q')
+    finally:
+        await operator.close();await service.close()
+
+
+@pytest.mark.asyncio
+async def test_strategy_pages_and_disabled_modes_remain_visible(tmp_path):
+    from bot_v1_support import strategy_config
+    entries=[strategy_config(f's{i:02}',enabled=i!=51) for i in range(52)]
+    config=valid_config(strategies=entries)
+    config['runtime']['limits'].update(max_strategies=64,max_positions=1,max_active_orders=8)
+    config['strategy_portfolios'].pop('s51')
+    service=service_type()(config,output_root=tmp_path/'runs')
+    await service.start(tmp_path/'private/control.sock');app=app_type()(service.socket_path)
+    try:
+        async with app.run_test(size=(100,28)) as pilot:
+            await eventually(lambda:app.state.page is not None)
+            assert len(app.state.page['items'])==50
+            await pilot.press('n')
+            await eventually(lambda:app.state.page is not None and len(app.state.page['items'])==2)
+            row=app.state.page['items'][-1]
+            assert row['name']=='s51' and not row['enabled'] and row['execution_mode'] is None
+            content=str(app.query_one('#record_details').content)
+            await pilot.press('b')
+            await eventually(lambda:app.state.page is not None and len(app.state.page['items'])==50)
+            assert service.session_id is None
             await pilot.press('q')
     finally:await service.close()

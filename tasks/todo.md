@@ -1,7 +1,7 @@
 # Terminal-ui tasks
 
 Plan: [plan.md](plan.md). Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
-Status: Approved; TU-03 complete; TU-04 in progress.
+Status: Approved; TU-04 complete; TU-05 in progress.
 Every behavioral task requires RED -> GREEN -> full regression -> compile ->
 review -> scoped commit. Run common checks from plan.md before completion.
 Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
@@ -64,7 +64,7 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ## TU-04: Inspect strategies, current trades and diagnostics
 
-- [ ] Add strategy selection and separate paged detail collections.
+- [x] Add strategy selection and separate paged detail collections.
 - Acceptance: All configured strategies and modes/reasons match provider DTOs;
   orders/positions/fills/events/findings retain fields and source precision.
   Paging exposes scope, revision and eviction; long selected messages scroll.

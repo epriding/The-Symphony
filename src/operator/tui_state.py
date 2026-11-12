@@ -17,6 +17,13 @@ class ViewState:
     generation: int = 0
     notice: str = 'Attach observes the service. Opening this client never starts trading.'
     connection: str = 'Connecting'
+    strategy: str | None = None
+    collection: str = 'orders'
+    cursor: str | None = None
+    page: dict | None = None
+    summary: dict | None = None
+    page_revision: int | None = None
+    view_generation: int = 0
 
     def accept_overview(self, reply: dict, now: float) -> None:
         target=(reply['service_id'],reply['session_id'])
@@ -24,6 +31,11 @@ class ViewState:
             if self.target is not None:
                 self.notice='Target changed / prior views and confirmations are invalid.'
             self.generation+=1
+            self.strategy=None
+            self.cursor=None
+            self.page=None
+            self.summary=None
+            self.view_generation+=1
         self.target=target
         self.overview=reply['data']
         self.received_at=now
