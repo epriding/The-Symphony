@@ -5,7 +5,7 @@ from .observations import safe_text
 
 
 def label(value: object) -> str:
-    return 'unknown' if value is None else safe_text(value)
+    return 'unknown' if value is None else safe_text(value,4096)
 
 
 @dataclass
