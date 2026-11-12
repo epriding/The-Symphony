@@ -1,7 +1,7 @@
 # Spec: trading bot TUI initiative
 
-Status: Provider specification approved by the user, followed by approval of
-the runtime-access build plan. Client specifications remain pending.
+Status: Runtime provider complete and verified. Human TUI spec drafted for
+approval; structured agent CLI spec remains pending.
 
 ## Objective
 
@@ -15,15 +15,15 @@ Approved decomposition: [CAPABILITY-MAP.md](CAPABILITY-MAP.md).
 
 ## Active module and build selection
 
-Active module: **runtime-access**.
-Its complete requirements and acceptance criteria are in
-[SPEC-runtime-access.md](SPEC-runtime-access.md).
+Next module: **terminal-ui**, specified in
+[SPEC-terminal-ui.md](SPEC-terminal-ui.md). This draft requires approval before
+planning or implementation. After approval, create a new module-scoped plan;
+the completed provider plan cannot authorize TUI code.
 
-When `/build auto` reads this file, plan and implement only `runtime-access`
-after the user approves that spec and the build plan. Do not infer approval
-for the two client modules or silently implement them from their names.
-Their specs follow approval of the provider contract, in dependency order.
-Completing runtime-access alone does not deliver the requested TUI.
+[Runtime-access](SPEC-runtime-access.md) is complete: 450 tests and offline
+verification passed. See [the service guide](docs/BOT_CONTROL.md).
+Completing this provider alone does not deliver the requested TUI. The
+`agent-interface` client still needs its own spec and approval.
 
 ## Shared constraints
 
@@ -40,11 +40,11 @@ Completing runtime-access alone does not deliver the requested TUI.
 The active module spec defines all six required specification areas: objective,
 full commands, project structure, code style, testing strategy, and boundaries.
 Its commands distinguish existing verification commands from proposed commands
-that do not exist yet. No application tests or build have run during drafting.
+that do not exist yet. No TUI or structured agent CLI implementation has started.
 
 ## Review decisions
 
-Review the following proposed behavior before approving the active module:
+Approved provider behavior, preserved for the future clients:
 
 1. Start/pause/resume/stop act on the whole bot session, not individual strategies.
 2. Pause stops strategy decisions. Existing orders may fill; market processing
@@ -55,4 +55,4 @@ Review the following proposed behavior before approving the active module:
    not launch the service or start trading. SSH/tmux or an existing process
    manager keeps the service independent of a client terminal's lifecycle.
 
-Approve or revise the provider specification before planning or implementation.
+Approve or revise the terminal-ui draft before its planning or implementation.
