@@ -1,7 +1,7 @@
 # Terminal-ui tasks
 
 Plan: [plan.md](plan.md). Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
-Status: Approved; TU-01 complete; TU-02 in progress.
+Status: Approved; TU-02 complete; TU-03 in progress.
 Every behavioral task requires RED -> GREEN -> full regression -> compile ->
 review -> scoped commit. Run common checks from plan.md before completion.
 Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
@@ -31,7 +31,7 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ## TU-02: Attach and detach through a real Textual entrypoint
 
-- [ ] Add `tui --socket` and an idle overview with working quit.
+- [x] Add `tui --socket` and an idle overview with working quit.
 - Acceptance: Lazy entrypoint requires a usable TTY, does not launch service,
   load credentials or create captures; missing service remains inspectable.
   q detaches, cleanup closes local work and the terminal restores normally.
@@ -45,7 +45,7 @@ Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
 ### Checkpoint: safe terminal ownership
 
-- [ ] Full checks, idle socket attach and actual PTY quit pass; existing CLI
+- [x] Full checks, idle socket attach and actual PTY quit pass; existing CLI
   commands remain compatible and the client cannot own the service lifetime.
 
 ## TU-03: Observe fresh state and reconnect honestly

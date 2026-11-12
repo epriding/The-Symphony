@@ -1,0 +1,8 @@
+Screen { background: #101820; color: #d9e4ee; }
+#banner { height: 3; padding: 1 2; background: #1b2c3a; color: #8bded0; text-style: bold; }
+#connection { height: 2; padding: 0 2; color: #a9bed0; }
+#body { height: 1fr; margin: 0 2 1 2; padding: 1 2; border: round #365064; }
+#session { height: auto; margin-bottom: 1; text-style: bold; }
+#mode { height: auto; color: #8bded0; margin-bottom: 1; }
+#guidance { height: auto; color: #a9bed0; }
+Footer { background: #1b2c3a; }

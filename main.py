@@ -119,8 +119,16 @@ def main(argv=None):
     mode.add_argument('--config')
     serve.add_argument('--socket',required=True)
     serve.add_argument('--output-root',required=True)
+    tui=commands.add_parser('tui',help='Attach a human terminal to the local bot service')
+    tui.add_argument('--socket',required=True)
     try:
         args=parser.parse_args(argv)
+        if args.command=='tui':
+            if (not sys.stdin.isatty() or not sys.stdout.isatty()
+                    or os.environ.get('TERM','dumb') in ('','dumb','unknown')):
+                raise ValueError('tui requires an interactive terminal with a usable TERM')
+            from src.operator.tui import run_tui
+            return asyncio.run(run_tui(args.socket))
         if args.command=='serve':
             asyncio.run(_serve(args,force_exit_on_unclean=True))
             return 0
