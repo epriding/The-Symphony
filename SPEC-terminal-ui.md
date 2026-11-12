@@ -1,8 +1,8 @@
 # Spec: terminal-ui
 
-Status: Draft for human approval. Module id: `terminal-ui`.
+Status: Approved by the user after commit 0612c95. Module id: `terminal-ui`.
 Library choice: Textual, explicitly requested by the user in place of curses.
-Depends on: implemented `runtime-access`. No TUI code is delivered by this draft.
+Depends on: implemented `runtime-access`. Build plan approval is pending.
 Sources: [confirmed intent](docs/intent/trading-bot-tui.md),
 [approved capability map](CAPABILITY-MAP.md),
 [provider contract](SPEC-runtime-access.md).
@@ -16,10 +16,9 @@ Opening, closing or losing the terminal never controls the service lifetime.
 Agents use the separately specified structured interface, rather than
 automating keystrokes. Agent diagnosis and code repair remain external.
 
-## Proposed defaults for approval
+## Approved defaults
 
-- Use Textual with Python 3.12. The user authorized this library change;
-  the remaining UI defaults still await spec approval.
+- Use Textual with Python 3.12, as explicitly selected by the user.
 - Show an overview and selectable strategy detail. Keep connection status,
   session state, execution mode, data age and available keys visible.
 - Poll the visible view about once per second without overlapping refreshes.
@@ -243,14 +242,13 @@ or process independence. No extra snapshot-testing dependency is required.
   auto-start/stop on attach/detach, credential display, finding execution,
   capture deletion or weakened tests.
 
-## Open questions and approval
+## Approval record
 
-Textual replaces curses at the user's explicit request; do not ask again for
-permission to use it. Approve or revise the remaining overview/detail layout,
-keys, refresh/stale thresholds, confirmations and small-terminal behavior.
-These are concrete proposed defaults, not choices already approved in the
-intent interview. No additional factual input is needed to plan once approved.
-Agent-interface remains a separate spec.
+The user selected Textual, reviewed the revised spec at commit 0612c95 and
+explicitly approved it in a later turn. The overview/detail layout, keys,
+refresh/stale thresholds, confirmations and small-terminal behavior above are
+now the approved contract. No open feature questions remain.
 
-Planning starts only after human approval of this spec in a later turn. This
-draft cannot authorize reusing the completed provider plan for TUI code.
+The new [terminal-ui plan](tasks/plan.md) and [tasks](tasks/todo.md) require the
+single build-plan checkpoint before autonomous implementation. The completed
+provider plan cannot authorize TUI code. Agent-interface remains a separate spec.

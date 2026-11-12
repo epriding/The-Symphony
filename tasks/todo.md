@@ -1,181 +1,147 @@
-# Runtime-access tasks
+# Terminal-ui tasks
 
-Plan: [plan.md](plan.md). Status: Complete; verified on 2026-11-12.
-Every behavior task uses RED -> GREEN -> full regression -> compile -> review
--> commit. Also run fresh offline smoke/replay after runner, capture or CLI
-changes. Preserve concrete test results in `.audit/` and log decisions in
-`.audit/trading-bot-tui.tsv`. Acceptance IDs refer to SPEC-runtime-access.md.
+Plan: [plan.md](plan.md). Spec: [SPEC-terminal-ui.md](../SPEC-terminal-ui.md).
+Status: Proposed; awaiting one build-plan approval. All tasks below are pending.
+Every behavioral task requires RED -> GREEN -> full regression -> compile ->
+review -> scoped commit. Run common checks from plan.md before completion.
+Acceptance IDs TU01–TU10 refer to the spec. No task changes bot ownership.
 
-## RA-00: Establish an executable baseline
+## TU-00: Verify Textual in the existing environment
 
-- [x] Restore Python environment and verify the unmodified application.
-- Acceptance: Isolated Python 3.12 environment has the existing requirements;
-  pip check, full pytest, compileall and fresh smoke/replay have real recorded
-  results. No project dependencies or tests were removed to make setup pass.
-- Verify: Commands in plan.md plus `python3 main.py smoke --output <fresh-dir>`
-  and `python3 main.py replay --capture <smoke-dir> --output <new-dir>`.
+- [ ] Pin and install `textual==8.2.8`, without extras.
+- Acceptance: Current baseline is verified; dependency resolution, imports,
+  pip check and full regression pass with all existing requirements retained.
+- Verify: `venv/bin/python -m pip install -r requirements.txt`, then
+  `venv/bin/python -m pip show textual` and common checks. Preserve actual logs.
 - Dependencies: Approved plan.
-- Files: Local environment and `.audit/` evidence; this todo status only.
-- Scope: Setup; no application code. Coverage: baseline for RA14.
+- Files: requirements.txt; task status and local audit artifacts.
+- Scope: Small; setup, no behavioral test invention. Coverage: TU10 foundation.
 
-## RA-01: Pause strategy decisions without suspending account processing
+## TU-01: Discover an idle provider through bounded sockets
 
-- [x] Add the runner control boundary and compatible replay behavior.
-- Acceptance: Pause/resume is independent of readiness; late callback results
-  cannot act across the pause barrier, including after resume. Existing fills
-  and risk processing continue; stop wins, and uncooperative tasks fail within
-  grace. Recorded and fresh-strategy replay remain consistent.
-- Verify: `python3 -m pytest -q tests/test_bot_control.py tests/test_bot_replay_v1.py`
-  plus the common task checks. Synchronize race tests with explicit barriers.
-- Dependencies: RA-00.
-- Files: src/paper_trading/runtime.py, src/paper_trading/replay.py,
-  tests/test_bot_control.py, tests/test_bot_replay_v1.py.
-- Scope: Medium. Coverage: RA06, RA07, RA08.
+- [ ] Implement the reusable asynchronous transport and real service tests.
+- Acceptance: Validated idle overview is inert; request IDs/targets and
+  success/error shapes are checked. Enforce frame/object/depth/finite JSON
+  limits, deadlines and cancellation; disconnect never retries a mutation.
+- Verify: `venv/bin/python -m pytest -q tests/test_bot_client.py` and common
+  checks. Use actual provider sockets plus malformed/fragmented reply fixtures.
+- Dependencies: TU-00.
+- Files: src/operator/client.py, tests/test_bot_client.py.
+- Scope: Small. Coverage: TU01, TU05, TU07.
 
-## RA-02: Attach to an idle private service
+## TU-02: Attach and detach through a real Textual entrypoint
 
-- [x] Serve a real local overview without creating a bot session.
-- Acceptance: Strict versioned/framed request validation works over a private
-  Unix socket; idle overview is bounded and does not load credentials or start
-  feeds. Reject foreign peers, insecure paths, existing sockets and malformed
-  requests; cleanup cannot unlink a replacement entry.
-- Verify: `python3 -m pytest -q tests/test_bot_service.py` plus common checks;
-  use actual Unix sockets and filesystem permission/ownership assertions.
-- Dependencies: RA-01.
-- Files: src/operator/__init__.py, src/operator/protocol.py,
-  src/operator/service.py, tests/test_bot_service.py.
-- Scope: Medium. Coverage: RA01, RA10, RA13.
+- [ ] Add `tui --socket` and an idle overview with working quit.
+- Acceptance: Lazy entrypoint requires a usable TTY, does not launch service,
+  load credentials or create captures; missing service remains inspectable.
+  q detaches, cleanup closes local work and the terminal restores normally.
+- Verify: `venv/bin/python -m pytest -q tests/test_bot_tui.py tests/test_bot_tui_process.py`
+  and common checks plus fresh offline smoke/replay. Pilot and a real PTY must
+  exercise the CLI; process fixtures are introduced here for later reuse.
+- Dependencies: TU-01.
+- Files: main.py, src/operator/tui.py, src/operator/tui.tcss,
+  tests/test_bot_tui.py, tests/test_bot_tui_process.py.
+- Scope: Medium. Coverage: TU01, TU08, TU09.
 
-### Checkpoint: runner and idle attach boundary
+### Checkpoint: safe terminal ownership
 
-- [x] Full regression/compile and pause/replay checks pass; inspect the socket
-  and runner ownership boundary before adding session controls.
+- [ ] Full checks, idle socket attach and actual PTY quit pass; existing CLI
+  commands remain compatible and the client cannot own the service lifetime.
 
-## RA-03: Start and stop an independent paper session
+## TU-03: Observe fresh state and reconnect honestly
 
-- [x] Route explicit lifecycle controls to one owned real runner.
-- Acceptance: Concurrent start admits one run, using a new ID/output directory;
-  session IDs reject stale controls. Stop uses existing cleanup, terminal state
-  remains readable, and unresolved cleanup blocks replacement. Client detach
-  has no effect on trading; pause/resume routes through RA-01's boundary.
-- Verify: `python3 -m pytest -q tests/test_bot_service.py tests/test_bot_control.py`
-  plus common checks. Use the real runner with bounded injected offline feeds.
-- Dependencies: RA-02.
-- Files: src/operator/service.py, src/operator/protocol.py,
-  tests/test_bot_service.py, tests/test_bot_control.py.
-- Scope: Medium. Coverage: RA02, RA03, RA07, RA09.
+- [ ] Add the live overview, independent age timer and read-only reconnect.
+- Acceptance: Actual overview fields and unknown values render correctly;
+  non-overlapping one-second polling and three-second stale labels use local
+  monotonic time. Service/session replacement invalidates prior view state.
+- Verify: `venv/bin/python -m pytest -q tests/test_bot_tui.py tests/test_bot_client.py`
+  and common checks. Delay/disconnect the read path with deterministic barriers;
+  assert UI responsiveness, retained stale labels and bounded reconnect backoff.
+- Dependencies: TU-02.
+- Files: src/operator/tui.py, src/operator/tui_state.py,
+  src/operator/tui.tcss, tests/test_bot_tui.py.
+- Scope: Medium. Coverage: TU02, TU05, TU06.
 
-## Authorized prerequisite: deterministic detail export ordering
+## TU-04: Inspect strategies, current trades and diagnostics
 
-- [x] Fix the cross-stream sequence defect exposed during RA-03 regression.
-- User authorized this scope extension after reviewing .audit/ra03-debug.md.
-- Evidence: tests/test_bot_history_order.py and its preserved legacy capture
-  fixture; .audit/history-order-focused.log and history-order-regression.log.
-- Result: history export schema 2 uses per-stream transactional ordinals; input
-  capture compatibility and all trade/accounting fields remain verified.
+- [ ] Add strategy selection and separate paged detail collections.
+- Acceptance: All configured strategies and modes/reasons match provider DTOs;
+  orders/positions/fills/events/findings retain fields and source precision.
+  Paging exposes scope, revision and eviction; long selected messages scroll.
+- Verify: `venv/bin/python -m pytest -q tests/test_bot_tui.py` and common checks.
+  Use multi-strategy real account fixtures, disabled/unrouted entries, retained
+  window overflow and navigation tests; render remote text as literal data.
+- Dependencies: TU-03.
+- Files: src/operator/tui.py, src/operator/tui_state.py,
+  src/operator/tui.tcss, tests/test_bot_tui.py.
+- Scope: Medium. Coverage: TU02, TU03, TU09.
 
-## RA-04: Read strategy and trade state from the real account
+## TU-05: Apply deliberate exact-target controls
 
-- [x] Publish consistent copied overview and strategy DTOs.
-- Acceptance: Multiple strategies, disabled/empty cases and partial orders,
-  positions and fills match actual runtime/ledger state. PAPER is explicit;
-  public data never implies LIVE. System activity is not misattributed, and
-  private configuration/account objects do not escape.
-- Verify: `python3 -m pytest -q tests/test_bot_runtime_access.py` plus common
-  checks; compare observations to real fixture execution/accounting outcomes.
-- Dependencies: RA-03.
-- Files: src/operator/observations.py, src/operator/service.py,
-  src/paper_trading/runtime.py, tests/test_bot_runtime_access.py.
-- Scope: Medium. Coverage: RA04, RA05.
+- [ ] Add confirmed start/stop, pause/resume and pending/unknown outcome state.
+- Acceptance: Confirmation names the frozen target and requires typed action;
+  cancel/invalid states are harmless. Admission is distinct from completion.
+  Replacements invalidate dialogs; timeout never retargets or repeats a command.
+- Verify: `venv/bin/python -m pytest -q tests/test_bot_client.py tests/test_bot_tui.py`
+  and common checks. Exercise real runner transitions and synchronized response
+  loss/target changes; blocked reads must not prevent applicable stop or quit.
+- Dependencies: TU-04.
+- Files: src/operator/client.py, src/operator/tui_state.py,
+  src/operator/tui.py, tests/test_bot_client.py, tests/test_bot_tui.py.
+- Scope: Medium. Coverage: TU04, TU05, TU07.
 
-## RA-05: Page observations within finite memory limits
+### Checkpoint: complete human control path
 
-- [x] Add session-bound collection cursors and enforce projection budgets.
-- Acceptance: Every collection honors limits, ordering, scope and revision;
-  foreign/malformed cursors fail explicitly. Repeated reads and session
-  replacement remain bounded without evicting ledger obligations or scanning
-  full capture history; incompatible identifiers/projections fail before start.
-- Verify: `python3 -m pytest -q tests/test_bot_runtime_access.py tests/test_bot_service.py`
-  plus common checks and reproducible retained-byte/count evidence.
-- Dependencies: RA-04.
-- Files: src/operator/protocol.py, src/operator/observations.py,
-  src/operator/service.py, tests/test_bot_runtime_access.py,
-  tests/test_bot_service.py.
-- Scope: Medium. Coverage: RA04, RA10, RA12.
+- [ ] Full checks pass; real state and controls agree with the provider.
+  Review fresh-account/pause wording and races without adding trading logic.
 
-### Checkpoint: shared account observations
+## TU-06: Prove bounded and hostile-input failure behavior
 
-- [x] Full suite/compile pass; trace controls and trade views to the one runner,
-  confirm projection/queue high-water evidence and correct session identity.
+- [ ] Complete backpressure, resource accounting and malformed reply coverage.
+- Acceptance: Client data/pages/queues stay within the approved 8 MiB profile;
+  tasks/connections release on cancellation and detach. Oversized, malformed,
+  stale-generation, markup and control-sequence payloads cannot become success.
+- Verify: `venv/bin/python -m pytest -q tests/test_bot_client.py tests/test_bot_tui.py`
+  and common checks. Record actual retained-byte/task high-water evidence under
+  repeated paging, delayed replies, unknown controls and target replacement.
+- Dependencies: TU-05.
+- Files: src/operator/client.py, src/operator/tui_state.py,
+  src/operator/tui.py, tests/test_bot_client.py, tests/test_bot_tui.py.
+- Scope: Medium. Coverage: TU05, TU07, TU09.
 
-## RA-06: Share bounded runtime events and diagnostic findings
+## TU-07: Verify real terminal lifecycle and appearance
 
-- [x] Expose recent events/fills and accept session-targeted plain-text findings.
-- Acceptance: Bounded rings expose eviction metadata; findings have correct
-  attribution and append-only artifact evidence. Artifact write failure rejects
-  publication; redaction/terminal sanitization and text limits are tested.
-  Findings cannot change readiness, accounting, configuration or code.
-- Verify: `python3 -m pytest -q tests/test_bot_runtime_access.py tests/test_bot_service.py`
-  plus common checks; exercise more records than each configured ring capacity.
-- Dependencies: RA-05.
-- Files: src/operator/observations.py, src/operator/service.py,
-  src/paper_trading/runtime.py, tests/test_bot_runtime_access.py,
-  tests/test_bot_service.py.
-- Scope: Medium. Coverage: RA11, RA12.
+- [ ] Complete PTY/process acceptance and presentation checks.
+- Acceptance: q/Ctrl-C/client kill leave a persistent synthetic service on the
+  same session with advancing inputs/risk; expected exit codes and terminal
+  restoration hold. Resize, focus, text input, monochrome/ASCII and long text work.
+- Verify: `venv/bin/python -m pytest -q tests/test_bot_tui_process.py tests/test_bot_tui.py`
+  and common checks. Use actual PTYs at 100x28 and smaller/restored sizes, with
+  explicit feed barriers and terminal attribute checks; retain safe output evidence.
+- Dependencies: TU-06.
+- Files: main.py, src/operator/tui.py, src/operator/tui.tcss,
+  tests/test_bot_tui.py, tests/test_bot_tui_process.py.
+- Scope: Medium. Coverage: TU08, TU09.
 
-## RA-07: Keep malformed and slow clients from starving the bot
+### Checkpoint: process independence and bounded failure
 
-- [x] Complete backpressure, deadlines and simultaneous-client failure handling.
-- Acceptance: Enforce request/response bytes, 8-client/32-queue caps, nesting,
-  5-second deadlines and total projection/buffer budget. Slow or abusive local
-  clients cannot prevent stop/risk progress. A timed-out control has explicit
-  unknown outcome; a client restart never blindly retries a mutation.
-- Verify: `python3 -m pytest -q tests/test_bot_service.py tests/test_bot_control.py`
-  plus common checks. Record actual saturation high-water behavior and verify
-  memory is released when clients or sessions are replaced.
-- Dependencies: RA-06.
-- Files: src/operator/protocol.py, src/operator/service.py,
-  tests/test_bot_service.py, tests/test_bot_control.py.
-- Scope: Medium. Coverage: RA09, RA10, RA12.
+- [ ] Full checks, resource bounds and real process acceptance pass. Review
+  actual terminal output; headless tests alone cannot complete this checkpoint.
 
-## RA-08: Launch serve explicitly and verify process lifetime
+## TU-08: Document operation and audit the completed TUI
 
-- [x] Add the serve entrypoint, signals and real subprocess acceptance tests.
-- Acceptance: Serve starts idle with mutually exclusive smoke/config modes;
-  existing commands and exit codes remain compatible. Real subprocess tests
-  detach/kill clients and reattach to the same active run, exercise service
-  signals/replacement and preserve captures and honest cleanup status.
-- Verify: `python3 -m pytest -q tests/test_bot_service.py tests/test_bot_cli_v1.py`
-  plus common checks and fresh offline smoke/replay. Use controlled feeds/
-  test harness synchronization for active-lifetime assertions, not timing luck.
-- Dependencies: RA-07.
-- Files: main.py, src/operator/service.py, tests/test_bot_service.py,
-  tests/test_bot_cli_v1.py.
-- Scope: Medium. Coverage: RA01, RA03, RA09, RA13, RA14.
+- [ ] Publish the verified offline/SSH workflow and acceptance trace.
+- Acceptance: Commands, keys, fresh-account/pause semantics, stale/unknown
+  outcomes and limits are documented. Every TU01–TU10 criterion resolves to
+  passing evidence; review/trail limitations are explicit and branch is clean.
+- Verify: Common checks plus fresh smoke/replay and documented service/TUI path;
+  validate local links, review diff, audit canonical trail and check all criteria.
+- Dependencies: TU-07.
+- Files: docs/BOT_TUI.md, README.md, SPEC.md, SPEC-terminal-ui.md,
+  CAPABILITY-MAP.md; task statuses and ignored audit artifacts.
+- Scope: Medium; documentation/review. Coverage: TU01–TU10 final traceability.
 
-### Checkpoint: complete provider behavior
+### Checkpoint: ready for human review
 
-- [x] Full suite, compile, dependency check, fresh smoke/replay and real socket/
-  subprocess tests pass. All RA01–RA13 criteria have concrete evidence.
-
-## RA-09: Document operation and audit the completed module
-
-- [x] Publish service/protocol instructions and verify RA01–RA14 traceability.
-- Acceptance: Docs explain setup, explicit start, detach vs service shutdown,
-  SSH/tmux, pause/risk semantics, unknown outcomes, fresh accounts, paper-only
-  limits and retained artifacts. Every acceptance claim resolves to passing
-  test evidence. Review the actual diff and append corrections to the trail;
-  disclose unavailable independent review and transcript access.
-- Verify: Final task checks; `git diff --check`; validate local doc links and
-  run the documented offline service path against actual sockets. Do not rerun
-  unchanged passing tests without new changes or an unresolved concern.
-- Dependencies: RA-08.
-- Files: docs/BOT_CONTROL.md, docs/BOT_RUNTIME.md, docs/_index.md,
-  tests/test_bot_service.py if a missing end-to-end acceptance case is found.
-- Scope: Medium. Coverage: RA14 and final acceptance traceability.
-
-### Checkpoint: ready for provider review
-
-- [x] No unchecked task or acceptance criterion remains; commits are scoped,
-  working tree is clean and audit limitations are explicit. No deployment,
-  TUI/client implementation, credentials or real-money execution occurred.
+- [ ] All tasks/criteria complete with scoped commits and recorded evidence.
+  No deployment, public credentials, live execution or agent CLI occurred.
