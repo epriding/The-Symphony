@@ -57,7 +57,11 @@ class Help(ModalScreen):
             yield Static(
                 'Up/Down or j/k: select or scroll. Enter: open strategy / focus record details.\n'
                 'Tab / Shift-Tab: change collection, or focus overview panes.\n'
-                'n: next page. b: first page. Esc: overview / cancel / acknowledge unknown outcome.\n'
+                'n/b: main table next/first page. Esc: restore / overview / cancel / acknowledge.\n'
+                'F2: expand/restore diagnostics. F3: cycle diagnostic view and focus it.\n'
+                'F4: focus main table. [ / ]: shrink/grow diagnostics; or drag its divider.\n'
+                'Findings: Info/Warning/Error checkboxes, All or Warnings + Errors presets.\n'
+                'Filters cover all retained findings for the displayed strategy scope.\n'
                 's: confirm fresh-session start. p: pause. r: resume. x: confirm stop.\n'
                 'q: detach from any view. Ctrl-C: detach with exit code 130.\n\n'
                 'Pause gates strategy decisions. Existing orders and risk actions can continue.\n'

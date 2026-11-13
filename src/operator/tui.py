@@ -7,7 +7,7 @@ from textual import work
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Vertical,VerticalScroll
 from textual.widgets import DataTable, Footer, Static, Tab, Tabs
 from textual.events import Resize
 
@@ -144,11 +144,14 @@ class BotApp(App[int]):
         self.set_class(self.diagnostics_expanded,'diagnostics_expanded')
         self.query_one('#records').display=not self.diagnostics_expanded
         self.query_one('#view_tabs').display=self.state.strategy is not None and not self.diagnostics_expanded
-        self.update_text('#diagnostic_divider','DIAGNOSTICS / F2 or Esc restore'
-            if self.diagnostics_expanded else
-            'DIAGNOSTICS / drag divider / [ smaller / ] larger / F2 expand')
+        self.render_diagnostic_heading()
         if self.diagnostics_expanded:self.focus_diagnostics()
         else:self.query_one('#records').focus()
+
+    def render_diagnostic_heading(self) -> None:
+        scope='All strategies' if self.state.strategy is None else 'Strategy: '+self.text(self.state.strategy)
+        hint='F2 or Esc restore' if self.diagnostics_expanded else 'F2 expand / drag / [ ] resize'
+        self.update_text('#diagnostic_divider',f'DIAGNOSTICS / {scope} / {hint}')
 
     def poll(self) -> None:
         if self._detaching:return
@@ -304,12 +307,13 @@ class BotApp(App[int]):
     def render_records(self) -> None:
         if self._detaching:return
         self.query_one(Diagnostics).set_context((self.state.target,self.state.strategy))
+        self.render_diagnostic_heading()
         table=self.query_one('#records',DataTable)
         old_row=table.cursor_row
         selected=self._visible_rows[old_row].get('id') if old_row<len(self._visible_rows) else None
         kind=self.state.collection if self.state.strategy is not None else 'strategies'
         self.update_text('#view_title',
-            f'Strategy: {self.text(self.state.strategy)}  /  {kind.upper()}'
+            f'[{kind.upper()}]  /  Strategy: {self.text(self.state.strategy)}'
             if self.state.strategy is not None else 'ALL STRATEGIES')
         tabs=self.query_one('#view_tabs',Tabs)
         tabs.display=self.state.strategy is not None and not self.diagnostics_expanded
@@ -442,11 +446,11 @@ class BotApp(App[int]):
 
     def action_down(self) -> None:
         if isinstance(self.focused,DataTable):self.focused.action_cursor_down()
-        else:self.query_one('#detail_scroll').scroll_relative(y=1,animate=False)
+        elif isinstance(self.focused,VerticalScroll):self.focused.scroll_relative(y=1,animate=False)
 
     def action_up(self) -> None:
         if isinstance(self.focused,DataTable):self.focused.action_cursor_up()
-        else:self.query_one('#detail_scroll').scroll_relative(y=-1,animate=False)
+        elif isinstance(self.focused,VerticalScroll):self.focused.scroll_relative(y=-1,animate=False)
 
     def action_interrupt(self) -> None:
         self._detaching=True

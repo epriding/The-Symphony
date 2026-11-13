@@ -35,6 +35,7 @@ async def read_findings(client,target,name=None) -> dict:
 
 
 def finding_time(value) -> str:
+    if value is None:return 'unknown'
     try:
         return datetime.fromtimestamp(value,timezone.utc).strftime('%H:%M:%S')
     except (TypeError,ValueError,OverflowError,OSError):

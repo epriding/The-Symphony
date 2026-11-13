@@ -19,7 +19,7 @@ Screen { background: #101820; color: #d9e4ee; }
 #diagnostic_divider:focus { text-style: bold reverse; }
 .compact #health { height: 1; }
 .diagnostics_expanded #identity, .diagnostics_expanded #health,
-.diagnostics_expanded #notice, .diagnostics_expanded #control_note,
+.diagnostics_expanded #control_note,
 .diagnostics_expanded #view_title, .diagnostics_expanded #view_tabs,
 .diagnostics_expanded #collection { display: none; }
 #records:focus { border: solid #8bded0; }
