@@ -259,3 +259,15 @@ provider plan cannot authorize TUI code. Agent-interface remains a separate spec
 Implementation completed under the approved plan. See [operation](docs/BOT_TUI.md),
 [acceptance and review limits](docs/verification/terminal-ui.md), and
 [ADR-003](docs/decisions/003-textual-terminal-client.md).
+
+## Approved readability follow-up (2026-11-13)
+
+The user approved the complete readability scope and autonomous TDD/incremental
+implementation. [The follow-up plan](tasks/tui-readability-plan.md) and
+[tasks](tasks/tui-readability-todo.md) extend this spec: prominent strategy/view
+header, visible tabs, a larger adjustable bottom diagnostic area and expanded
+view, separate Findings/Events/Record details, structured newest-first findings,
+severity colors plus text, multi-select Info/Warning/Error filtering across the
+entire retained finding window with counts and meaningful empty states. Debug
+and Critical are excluded. Existing protocol, safety and lifetime requirements
+continue to apply. Earlier completion evidence describes the original build.
