@@ -64,7 +64,7 @@ class _RecordedDecisions:
 
 async def replay(directory, output_directory=None, strategy=None, execution_config=None, strategy_factory=None):
     manifest, records = read_capture(directory)
-    if manifest['schema_version'] == 3:
+    if manifest['schema_version'] in (3, 4):
         if strategy is not None or strategy_factory is not None or execution_config is not None:
             raise ValueError('Schema 3 fresh strategies use the private runtime replay registry')
         if output_directory is None:
@@ -171,6 +171,9 @@ async def _replay_runtime_session(directory, output_directory, *, strategy_facto
         session = PaperSession(config, VirtualClock(manifest['started_at']),
             capture_directory=output if runtime_config else None, audit_directory=output,
             history_store=store, limits=limits, runtime_config=runtime_config)
+        if manifest['schema_version'] == 4:
+            session.recorder.schema_version = 4
+            session.recorder.manifest['schema_version'] = 4
         if runtime_config:
             session.recorder.manifest['identity_mapping'] = deepcopy(manifest.get('identity_mapping', {}))
         if strategy_factories is not None:
@@ -216,6 +219,7 @@ async def _replay_runtime_session(directory, output_directory, *, strategy_facto
                     await compact()
                 session._replay_decisions = None
         else:
+            operator_paused = False
             for record in records:
                 if pacing:
                     result = pacing(record)
@@ -225,6 +229,30 @@ async def _replay_runtime_session(directory, output_directory, *, strategy_facto
                 payload = record['payload']
                 if record['kind'] == 'runtime_control':
                     action = payload['action']
+                    if action in ('operator_pause', 'operator_resume'):
+                        if manifest['schema_version'] != 4:
+                            raise ValueError('Operator controls require schema 4')
+                        if action == 'operator_pause':
+                            if operator_paused:
+                                raise ValueError('Duplicate operator pause boundary')
+                            operator_paused = True
+                            if tasks:
+                                for task in tasks.values():
+                                    task.cancel()
+                                done, pending = await asyncio.wait(set(tasks.values()), timeout=grace)
+                                if pending:
+                                    raise RuntimeError('Fresh replay pause cancellation exceeded grace')
+                                for task in done:
+                                    if not task.cancelled():
+                                        task.exception()
+                                tasks.clear()
+                        else:
+                            if not operator_paused:
+                                raise ValueError('Resume without pause boundary')
+                            operator_paused = False
+                    if operator_paused and (action == 'dispatch' or
+                            (action == 'completion' and payload['accepted'])):
+                        raise ValueError('Strategy work admitted while operator paused')
                     if strategy_factories is not None:
                         name = payload.get('strategy')
                         if action == 'dispatch':

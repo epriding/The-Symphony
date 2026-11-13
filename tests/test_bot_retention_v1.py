@@ -128,6 +128,11 @@ class RoundTrips:
 
 def retention_config():
     config = valid_config(strategies=[strategy_config("retention")])
+    # Allocation tracing and durable SQLite work are part of this scenario;
+    # retention/accounting, rather than subsecond host I/O, is the invariant.
+    config['runtime']['startup_timeout_seconds'] = 2
+    config['runtime']['shutdown_grace_seconds'] = 2
+    config['runtime']['strategy_timeout_seconds'] = 2
     config["risk"]["PAPER"].update(max_position_exposure=.50,
                                    max_total_exposure=10,
                                    max_quote_age_seconds=5,
@@ -169,8 +174,7 @@ async def run_workload(directory, *, cycles=24, duplicate_probe=False):
                          strategy_factories={"retention": scenario.factory})
     task = asyncio.create_task(runner.run())
     try:
-        await asyncio.wait_for(asyncio.gather(*(feed.started.wait()
-                                               for feed in feeds.values())), 2)
+        await eventually(lambda: all(feed.started.is_set() for feed in feeds.values()), task=task)
         await pump(clock, feeds, scenario, task)
         # Record a reliable old print while there is no passive order. Later
         # unique prints and completed orders exceed the tiny hot-history window.
@@ -290,7 +294,8 @@ async def test_old_public_print_cannot_fill_new_empty_ahead_order_after_history_
 
 
 @pytest.mark.asyncio
-async def test_archived_capture_replay_preserves_totals_with_a_finite_fixture_allocation_guard(tmp_path):
+async def test_archived_capture_replay_preserves_totals_with_a_finite_fixture_allocation_guard(
+        tmp_path, delayed_history_startup):
     """AC13/AC14: replay/report totals span archived work without a new strategy."""
     replay = bot.replay_bot
     was_tracing = tracemalloc.is_tracing()

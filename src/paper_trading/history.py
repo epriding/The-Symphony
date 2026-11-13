@@ -22,7 +22,7 @@ import time
 
 
 class HistoryStore:
-    schema_version = 1
+    schema_version = 2
     detail_streams = ('executions', 'markouts', 'order_timings', 'groups')
 
     def __init__(self, directory, *, limits=None, max_cache_records=8, page_size=64,
@@ -136,7 +136,7 @@ class HistoryStore:
         conn.execute(f'PRAGMA busy_timeout={max(1, int(self.timeout * 1000))}')
         conn.set_progress_handler(lambda: int(self._stop.is_set() or time.monotonic() > self._deadline), 1000)
         conn.execute('CREATE TABLE metadata (version INTEGER NOT NULL)')
-        conn.execute('INSERT INTO metadata VALUES (1)')
+        conn.execute('INSERT INTO metadata VALUES (?)', (self.schema_version,))
         conn.execute('CREATE TABLE entries (namespace TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(namespace,key)) WITHOUT ROWID')
         conn.execute('CREATE TABLE records (sequence INTEGER PRIMARY KEY AUTOINCREMENT, stream TEXT NOT NULL, value TEXT NOT NULL)')
         conn.execute('CREATE INDEX records_stream_sequence ON records(stream,sequence)')
@@ -426,7 +426,11 @@ class HistoryStore:
         self._identity(stream, '')
         sequence = conn.execute('INSERT INTO records(stream,value) VALUES (?,?)', (stream, self._encode(record))).lastrowid
         if stream in {'executions', 'markouts', 'order_timings', 'groups'} and isinstance(record, dict):
-            record = dict(record, accounting_order=sequence)
+            # The global SQLite sequence also counts unrelated streams whose
+            # flush cadence can differ during replay. Export only this stream's
+            # transactional ordinal; keep the global key for internal paging.
+            current = conn.execute('SELECT records FROM stream_counts WHERE stream=?', (stream,)).fetchone()
+            record = dict(record, accounting_order=(current[0] if current else 0) + 1)
             conn.execute('UPDATE records SET value=? WHERE sequence=?', (self._encode(record), sequence))
         conn.execute('INSERT INTO stream_counts VALUES (?,1) ON CONFLICT(stream) DO UPDATE SET records=records+1', (stream,))
         if stream == 'executions':

@@ -252,3 +252,24 @@ def test_log_worker_launch_failure_closes_already_open_destination(tmp_path, mon
     finally:
         for stream in opened:
             stream.close()
+
+
+@pytest.mark.parametrize('raw,expected', [
+    ('ordinary=keep API_KEY="dummy-value"', 'ordinary=keep API_KEY="[REDACTED]"'),
+    ('outer=inner=token=dummy&safe=keep', 'outer=inner=token=[REDACTED]&safe=keep'),
+    ('auth.password = dummy; plain:value', 'auth.password = [REDACTED]; plain:value'),
+    ('my-secret-field=one inner.api_key:two', 'my-secret-field=[REDACTED] inner.api_key:[REDACTED]'),
+])
+def test_secret_assignments_preserve_nested_and_prefixed_masking(raw,expected):
+    from src.utilities.logger import redact
+    assert redact(raw)==expected
+
+
+def test_long_plain_record_does_not_backtrack_beyond_service_deadline():
+    import subprocess
+    import sys
+    # A bounded log record must not stall parsing for longer than an RPC deadline.
+    result=subprocess.run([sys.executable,'-c',
+        "from src.utilities.logger import redact; s='x'*16000; assert redact(s)==s"],
+        capture_output=True,timeout=5)
+    assert result.returncode==0,result.stderr

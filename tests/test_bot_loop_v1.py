@@ -87,10 +87,15 @@ def test_preflight_rejects_invalid_strategy_before_activating_feeds(bot_api, tmp
 
 
 @pytest.mark.asyncio
-async def test_readiness_waits_for_both_venues_and_snapshots_are_independent(bot_api, tmp_path):
+async def test_readiness_waits_for_both_venues_and_snapshots_are_independent(
+        bot_api, tmp_path, delayed_history_startup):
     config = valid_config(strategies=[strategy_config("mutator"),
                                     strategy_config("observer"),
                                     strategy_config("disabled", enabled=False)])
+    # Readiness and snapshot isolation must not depend on SQLite schema setup
+    # finishing inside the generic fixture's subsecond I/O/startup budgets.
+    config['runtime']['shutdown_grace_seconds'] = 2
+    config['runtime']['startup_timeout_seconds'] = 2
     calls, contexts, observer_snapshots = [], [], []
 
     class Mutator:
@@ -120,7 +125,7 @@ async def test_readiness_waits_for_both_venues_and_snapshots_are_independent(bot
     assert runner.status["phase"] != "tampered"
     task = asyncio.create_task(runner.run())
     try:
-        await wait_for_feeds(feeds)
+        await eventually(lambda: all(feed.started.is_set() for feed in feeds), task=task)
         await feeds[0].push_book()
         await eventually(lambda: feeds[0].emitted == 1)
         await asyncio.sleep(.02)
@@ -152,6 +157,9 @@ async def test_readiness_waits_for_both_venues_and_snapshots_are_independent(bot
 async def test_one_callback_and_one_latest_notification_while_risk_timers_continue(bot_api, tmp_path, monkeypatch):
     config = valid_config(strategies=[strategy_config("slow"), strategy_config("healthy")])
     config["runtime"]["strategy_timeout_seconds"] = .8
+    # Coalescing/risk progress is asserted above cleanup; durable capture
+    # finalization must not turn it into a 250 ms host-storage benchmark.
+    config['runtime']['shutdown_grace_seconds'] = 2
     release, started = asyncio.Event(), asyncio.Event()
     slow_prices, healthy_calls, risk_checks = [], [], []
     active, peak = 0, 0
@@ -201,7 +209,7 @@ async def test_one_callback_and_one_latest_notification_while_risk_timers_contin
         await eventually(lambda: len(risk_checks) >= after_latest_dispatch + 2)
         assert slow_prices == [.5, .55], "old notifications were queued instead of replaced"
         assert peak == 1
-        await stop_and_join(runner, task)
+        await stop_and_join(runner, task, timeout=5)
     finally:
         release.set()
         await dispose(task)
