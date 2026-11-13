@@ -16,7 +16,7 @@ from .tui_state import ViewState, label
 from .tui_dialogs import Confirmation, Help
 from .tui_layout import DiagnosticDivider
 from .tui_diagnostics import Diagnostics,DIAGNOSTIC_VIEWS
-from .tui_findings import read_findings
+from .tui_findings import finding_cell,read_findings
 from .protocol import CONTROL_OPS
 
 COLLECTIONS=('orders','positions','fills','events','findings')
@@ -26,11 +26,11 @@ COLUMNS={
     'positions':('exchange','market_id','outcome','side','quantity','price'),
     'fills':('exchange','market_id','outcome','side','quantity','price','timestamp'),
     'events':('sequence','action','strategy','timestamp'),
-    'findings':('severity','author','strategy','message'),
+    'findings':('severity','timestamp','strategy','author','message'),
 }
 WIDTHS={'strategies':(18,8,7,5,20,6,9),'orders':(12,14,7,5,11,10,8),
     'positions':(12,14,7,5,10,10),'fills':(12,12,7,5,9,8,17),
-    'events':(8,18,18,20),'findings':(8,14,16,43)}
+    'events':(8,18,18,20),'findings':(9,10,16,12,34)}
 TITLES={'name':'Strategy','execution_mode':'Mode','active_order_count':'Orders',
     'position_count':'Positions','market_id':'Market','remaining_quantity':'Remaining','timestamp':'Time'}
 
@@ -198,9 +198,12 @@ class BotApp(App[int]):
             if name is not None:
                 summary=(await self.client.request('strategy',target=self.state.target,
                     params={'name':name}))['data']
-                op='findings' if self.state.collection=='findings' else 'strategy'
+                if self.state.collection=='findings':
+                    if key==(self.state.generation,self.state.view_generation):self.state.summary=summary
+                    return
+                op='strategy'
                 params['name']=name
-                if op=='strategy':params['collection']=self.state.collection
+                params['collection']=self.state.collection
             reply=await self.client.request(op,target=self.state.target,params=params)
         except ClientError as error:
             if key==(self.state.generation,self.state.view_generation):
@@ -229,6 +232,27 @@ class BotApp(App[int]):
         if history is not None:diagnostic.history=history
         diagnostic.failure=failure
         diagnostic.render_diagnostics()
+        self.apply_finding_filter(reset=False)
+
+    def apply_finding_filter(self, *, reset: bool) -> None:
+        if self.state.strategy is None or self.state.collection!='findings':return
+        diagnostic=self.query_one(Diagnostics)
+        if reset:self.state.cursor=None
+        history=diagnostic.history
+        if history is None or diagnostic.failure:
+            self.state.page=None
+        else:
+            rows=diagnostic.filtered_findings()
+            offset=int(self.state.cursor.split(':')[1]) if self.state.cursor else 0
+            if offset>=len(rows):
+                offset=0
+                self.state.cursor=None
+            more=len(rows)>offset+50
+            self.state.page=dict(items=rows[offset:offset+50],scope='recent',has_more=more,
+                next_cursor=f'finding:{offset+50}' if more else None,
+                **{key:history[key] for key in ('retained_start','retained_end','evicted')})
+            self.state.page_revision=history['revision']
+        self.render_records()
 
     def update_text(self, selector: str, content: str) -> None:
         widget=self.query_one(selector,Static)
@@ -298,7 +322,8 @@ class BotApp(App[int]):
         self._visible_rows=self.state.page['items'] if self.state.page is not None else []
         index=0
         for i,row in enumerate(self._visible_rows):
-            table.add_row(*(Text('unrouted' if kind=='strategies' and field=='execution_mode'
+            table.add_row(*(finding_cell(self.text,field,row.get(field)) if kind=='findings' else
+                Text('unrouted' if kind=='strategies' and field=='execution_mode'
                 and row.get(field) is None else self.text(row.get(field)),overflow='crop',no_wrap=True)
                 for field in COLUMNS[kind]),key=str(i))
             if key==self._table_key and row.get('id')==selected:index=i
@@ -313,6 +338,7 @@ class BotApp(App[int]):
             title+=' / next page: '+('yes' if page['has_more'] else 'no')
             if page['scope']=='recent':
                 title+=f" / retained {page.get('retained_start')}..{page.get('retained_end')} / evicted {page.get('evicted')}"
+        if kind=='findings':title+=' / Filter: '+self.query_one(Diagnostics).filter_label
         self.query_one('#collection',Static).update(title)
         self.render_details()
 

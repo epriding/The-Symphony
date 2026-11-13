@@ -1,5 +1,6 @@
 """Bounded retained finding reads for the human client; no protocol extensions."""
 from datetime import datetime,timezone
+from rich.text import Text
 
 from .client import ClientError
 
@@ -38,3 +39,11 @@ def finding_time(value) -> str:
         return datetime.fromtimestamp(value,timezone.utc).strftime('%H:%M:%S')
     except (TypeError,ValueError,OverflowError,OSError):
         return str(value)
+
+
+def finding_cell(display,field,value) -> Text:
+    text=display(finding_time(value) if field=='timestamp' else
+        'session-wide' if field=='strategy' and value is None else value)
+    return Text(text.upper() if field=='severity' else text,
+        style=SEVERITY_COLORS.get(value,'') if field=='severity' else '',
+        overflow='crop',no_wrap=True)
