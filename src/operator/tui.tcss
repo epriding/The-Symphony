@@ -1,5 +1,5 @@
 Screen { background: #101820; color: #d9e4ee; }
-#banner { height: 3; padding: 1 2; background: #1b2c3a; color: #8bded0; text-style: bold; }
+#banner { height: 2; padding: 0 2; background: #1b2c3a; color: #8bded0; text-style: bold; }
 #connection { height: 1; padding: 0 2; color: #a9bed0; }
 #resize { display: none; height: 1fr; content-align: center middle; color: #edc47c; }
 #body { height: 1fr; margin: 0 2; padding: 0 1; border: round #365064; }
@@ -7,9 +7,11 @@ Screen { background: #101820; color: #d9e4ee; }
 #mode { height: 1; color: #8bded0; }
 #identity { height: 2; color: #a9bed0; }
 #health { height: 3; }
-#notice { height: 2; color: #edc47c; }
+#notice { height: 1; color: #edc47c; }
 #control_note { height: 1; color: #edc47c; }
-#collection { height: 2; color: #8bded0; }
+#view_title { height: 1; color: #8bded0; text-style: bold; }
+#view_tabs { height: 2; display: none; }
+#collection { height: 1; color: #a9bed0; }
 #records { height: 1fr; min-height: 5; }
 #records:focus { border: solid #8bded0; }
 DataTable > .datatable--cursor { text-style: bold reverse; }

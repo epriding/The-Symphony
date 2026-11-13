@@ -8,7 +8,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
-from textual.widgets import DataTable, Footer, Static
+from textual.widgets import DataTable, Footer, Static, Tab, Tabs
 from textual.events import Resize
 
 from .client import ClientError, RuntimeClient
@@ -85,6 +85,8 @@ class BotApp(App[int]):
             yield Static(self.state.notice,id='notice',markup=False)
             yield Static('Pause gates strategy decisions; existing orders and risk actions can continue.',
                 id='control_note',markup=False)
+            yield Static('ALL STRATEGIES',id='view_title',markup=False)
+            yield Tabs(*(Tab(kind.title(),id='view-'+kind) for kind in COLLECTIONS),id='view_tabs')
             yield Static('STRATEGIES / loading',id='collection',markup=False)
             yield DataTable(id='records',cursor_type='row',zebra_stripes=True)
             with VerticalScroll(id='detail_scroll',can_focus=True):
@@ -229,6 +231,13 @@ class BotApp(App[int]):
         old_row=table.cursor_row
         selected=self._visible_rows[old_row].get('id') if old_row<len(self._visible_rows) else None
         kind=self.state.collection if self.state.strategy is not None else 'strategies'
+        self.update_text('#view_title',
+            f'Strategy: {self.text(self.state.strategy)}  /  {kind.upper()}'
+            if self.state.strategy is not None else 'ALL STRATEGIES')
+        tabs=self.query_one('#view_tabs',Tabs)
+        tabs.display=self.state.strategy is not None
+        if tabs.display and tabs.active!='view-'+kind:
+            tabs.active='view-'+kind
         key=(self.state.generation,self.state.view_generation)
         table.clear(columns=True)
         for field,width in zip(COLUMNS[kind],WIDTHS[kind]):
@@ -295,6 +304,14 @@ class BotApp(App[int]):
         self.render_records()
         self._next_attempt=0
         self.poll()
+
+    def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        if event.tabs.id!='view_tabs' or self.state.strategy is None:
+            return
+        kind=event.tab.id.removeprefix('view-')
+        if kind!=self.state.collection and event.tabs.active==event.tab.id:
+            self.state.collection=kind
+            self.navigate()
 
     def action_next_pane(self) -> None:
         if len(self.screen_stack)>1 or self.state.strategy is None:
