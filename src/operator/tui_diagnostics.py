@@ -110,7 +110,7 @@ class Diagnostics(Vertical):
     def render_diagnostics(self) -> None:
         table=self.query_one('#diagnostic_records',DataTable)
         index=table.cursor_row
-        selected=self.rows[index]['id'] if index<len(self.rows) else None
+        selected=self.rows[index]['id'] if 0<=index<len(self.rows) else None
         if self.mode=='findings':
             self.rows=self.filtered_findings()
             columns=('Severity','Time (UTC)','Strategy','Author','Summary')
@@ -135,7 +135,7 @@ class Diagnostics(Vertical):
     def render_selected(self) -> None:
         index=self.query_one('#diagnostic_records',DataTable).cursor_row
         content='No selected diagnostic record'
-        if index<len(self.rows):
+        if 0<=index<len(self.rows):
             content='\n'.join(f'{self.app.text(key)}: {self.app.text(value)}'
                 for key,value in self.rows[index].items())
         self.app.update_text('#diagnostic_details',content)
@@ -147,6 +147,6 @@ class Diagnostics(Vertical):
     def on_data_table_row_selected(self,event: DataTable.RowSelected) -> None:
         if event.data_table.id=='diagnostic_records':
             event.stop()
-            if not self.rows:return
+            if not 0<=event.cursor_row<len(self.rows):return
             if not self.app.diagnostics_expanded:self.app.action_expand_diagnostics()
             self.app.call_after_refresh(self.query_one('#diagnostic_detail_scroll').focus)

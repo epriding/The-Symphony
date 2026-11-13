@@ -310,7 +310,7 @@ class BotApp(App[int]):
         self.render_diagnostic_heading()
         table=self.query_one('#records',DataTable)
         old_row=table.cursor_row
-        selected=self._visible_rows[old_row].get('id') if old_row<len(self._visible_rows) else None
+        selected=self._visible_rows[old_row].get('id') if 0<=old_row<len(self._visible_rows) else None
         kind=self.state.collection if self.state.strategy is not None else 'strategies'
         self.update_text('#view_title',
             f'[{kind.upper()}]  /  Strategy: {self.text(self.state.strategy)}'
@@ -350,7 +350,7 @@ class BotApp(App[int]):
         if self._detaching or not self.query('#records'):return
         lines=[]
         index=self.query_one('#records',DataTable).cursor_row
-        if index<len(self._visible_rows):
+        if 0<=index<len(self._visible_rows):
             lines.append('SELECTED RECORD / Enter focuses this scrollable pane')
             lines.extend(f'{self.text(k)}: {self.text(v)}' for k,v in self._visible_rows[index].items())
         if self.state.summary:
@@ -366,11 +366,11 @@ class BotApp(App[int]):
         if event.data_table.id=='records':self.render_details()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        if event.data_table.id!='records':return
+        if event.data_table.id!='records' or not 0<=event.cursor_row<len(self._visible_rows):return
         if self.state.strategy is not None:
             self.query_one(Diagnostics).show_mode('details')
             self.query_one('#detail_scroll').focus()
-        elif event.cursor_row<len(self._visible_rows):
+        else:
             self.state.strategy=self._visible_rows[event.cursor_row]['name']
             self.state.collection='orders'
             self.navigate()
