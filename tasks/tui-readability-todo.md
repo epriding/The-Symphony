@@ -3,7 +3,7 @@
 Plan: [tui-readability-plan.md](tui-readability-plan.md).
 
 - [x] RD-01: Prominent strategy/view heading and clickable visible tabs.
-- [ ] RD-02: Larger adjustable and expandable diagnostics layout.
+- [x] RD-02: Larger adjustable and expandable diagnostics layout.
 - [ ] RD-03: Separate views and bounded structured newest-first findings.
 - [ ] RD-04: Severity multi-select, presets and honest matching/empty states.
 - [ ] RD-05: Final interaction/process verification, review, docs and audit.

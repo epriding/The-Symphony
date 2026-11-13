@@ -1,5 +1,5 @@
 Screen { background: #101820; color: #d9e4ee; }
-#banner { height: 2; padding: 0 2; background: #1b2c3a; color: #8bded0; text-style: bold; }
+#banner { height: 1; padding: 0 2; background: #1b2c3a; color: #8bded0; text-style: bold; }
 #connection { height: 1; padding: 0 2; color: #a9bed0; }
 #resize { display: none; height: 1fr; content-align: center middle; color: #edc47c; }
 #body { height: 1fr; margin: 0 2; padding: 0 1; border: round #365064; }
@@ -12,10 +12,19 @@ Screen { background: #101820; color: #d9e4ee; }
 #view_title { height: 1; color: #8bded0; text-style: bold; }
 #view_tabs { height: 2; display: none; }
 #collection { height: 1; color: #a9bed0; }
-#records { height: 1fr; min-height: 5; }
+#workspace { height: 1fr; }
+#records { height: 2fr; min-height: 5; }
+#diagnostics { height: 1fr; min-height: 4; }
+#diagnostic_divider { height: 1; background: #1b2c3a; color: #8bded0; }
+#diagnostic_divider:focus { text-style: bold reverse; }
+.compact #health { height: 1; }
+.diagnostics_expanded #identity, .diagnostics_expanded #health,
+.diagnostics_expanded #notice, .diagnostics_expanded #control_note,
+.diagnostics_expanded #view_title, .diagnostics_expanded #view_tabs,
+.diagnostics_expanded #collection { display: none; }
 #records:focus { border: solid #8bded0; }
 DataTable > .datatable--cursor { text-style: bold reverse; }
-#detail_scroll { height: 4; border-top: solid #365064; }
+#detail_scroll { height: 1fr; border-top: solid #365064; }
 #detail_scroll:focus { border: solid #8bded0; }
 #record_details { height: auto; }
 Footer { background: #1b2c3a; }

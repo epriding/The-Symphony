@@ -14,6 +14,7 @@ from textual.events import Resize
 from .client import ClientError, RuntimeClient
 from .tui_state import ViewState, label
 from .tui_dialogs import Confirmation, Help
+from .tui_layout import DiagnosticDivider
 from .protocol import CONTROL_OPS
 
 COLLECTIONS=('orders','positions','fills','events','findings')
@@ -37,6 +38,9 @@ class BotApp(App[int]):
     CSS_PATH='tui.tcss'
     BINDINGS=[Binding('q','detach','Detach',priority=True),
               ('?','help','Help'),
+              ('f2','expand_diagnostics','Expand diagnostics'),
+              Binding('[','shrink_diagnostics','Smaller',show=False),
+              Binding(']','grow_diagnostics','Larger',show=False),
               Binding('ctrl+c','interrupt','Detach',show=False,priority=True),
               Binding('tab','next_pane','Next tab',priority=True,key_display='Tab'),
               Binding('shift+tab','previous_pane','Previous tab',priority=True,show=False),
@@ -62,6 +66,8 @@ class BotApp(App[int]):
         self._last_bindings=None
         self._detaching=False
         self._terminal_usable=False
+        self.diagnostic_fraction=1/3
+        self.diagnostics_expanded=False
         encoding=(sys.stdout.encoding or 'utf-8').lower().replace('-','')
         self.ascii_mode=ascii_mode if ascii_mode is not None else encoding not in ('utf8','utf8sig')
 
@@ -88,9 +94,12 @@ class BotApp(App[int]):
             yield Static('ALL STRATEGIES',id='view_title',markup=False)
             yield Tabs(*(Tab(kind.title(),id='view-'+kind) for kind in COLLECTIONS),id='view_tabs')
             yield Static('STRATEGIES / loading',id='collection',markup=False)
-            yield DataTable(id='records',cursor_type='row',zebra_stripes=True)
-            with VerticalScroll(id='detail_scroll',can_focus=True):
-                yield Static('Waiting for a collection',id='record_details',markup=False)
+            with Vertical(id='workspace'):
+                yield DataTable(id='records',cursor_type='row',zebra_stripes=True)
+                yield DiagnosticDivider()
+                with Vertical(id='diagnostics'):
+                    with VerticalScroll(id='detail_scroll',can_focus=True):
+                        yield Static('Waiting for a collection',id='record_details',markup=False)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -110,10 +119,33 @@ class BotApp(App[int]):
         size=self.size if size is None else size
         small=size.width<100 or size.height<28
         self._terminal_usable=not small
+        self.set_class(size.height<36,'compact')
         self.query_one('#body').display=not small
         self.query_one('#resize').display=small
         if small and self.confirmation is not None:
             self.confirmation.dismiss(False)
+
+    def adjust_diagnostics(self, delta: float) -> None:
+        if self.diagnostics_expanded:return
+        self.diagnostic_fraction=min(.75,max(.2,self.diagnostic_fraction+delta))
+        self.query_one('#diagnostics').styles.height=f'{self.diagnostic_fraction}fr'
+        self.query_one('#records').styles.height=f'{1-self.diagnostic_fraction}fr'
+
+    def action_grow_diagnostics(self) -> None:
+        self.adjust_diagnostics(.1)
+
+    def action_shrink_diagnostics(self) -> None:
+        self.adjust_diagnostics(-.1)
+
+    def action_expand_diagnostics(self) -> None:
+        self.diagnostics_expanded=not self.diagnostics_expanded
+        self.set_class(self.diagnostics_expanded,'diagnostics_expanded')
+        self.query_one('#records').display=not self.diagnostics_expanded
+        self.query_one('#view_tabs').display=self.state.strategy is not None and not self.diagnostics_expanded
+        self.update_text('#diagnostic_divider','DIAGNOSTICS / F2 or Esc restore'
+            if self.diagnostics_expanded else
+            'DIAGNOSTICS / drag divider / [ smaller / ] larger / F2 expand')
+        self.query_one('#detail_scroll' if self.diagnostics_expanded else '#records').focus()
 
     def poll(self) -> None:
         if self._detaching:return
@@ -235,7 +267,7 @@ class BotApp(App[int]):
             f'Strategy: {self.text(self.state.strategy)}  /  {kind.upper()}'
             if self.state.strategy is not None else 'ALL STRATEGIES')
         tabs=self.query_one('#view_tabs',Tabs)
-        tabs.display=self.state.strategy is not None
+        tabs.display=self.state.strategy is not None and not self.diagnostics_expanded
         if tabs.display and tabs.active!='view-'+kind:
             tabs.active='view-'+kind
         key=(self.state.generation,self.state.view_generation)
@@ -337,6 +369,9 @@ class BotApp(App[int]):
     def action_back(self) -> None:
         if len(self.screen_stack)>1:
             self.screen.dismiss(False)
+            return
+        if self.diagnostics_expanded:
+            self.action_expand_diagnostics()
             return
         if self.state.unknown:
             self.state.unknown=''
