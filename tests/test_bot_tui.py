@@ -370,7 +370,10 @@ async def test_large_recent_findings_stay_bounded_and_disclose_eviction(tmp_path
             await eventually(lambda:app.state.collection=='findings' and app.state.page is not None)
             assert len(app.state.page['items'])==50 and app.state.page['evicted']
             assert 'evicted True' in str(app.query_one('#collection').content)
-            model=retained_bytes([app.state,app._visible_rows])
+            from src.operator.tui_diagnostics import Diagnostics
+            diagnostic=app.query_one(Diagnostics)
+            await eventually(lambda:diagnostic.history is not None)
+            model=retained_bytes([app.state,app._visible_rows,diagnostic.history,diagnostic.rows])
             reserve=2*(384*1024+512*1024)
             request.node.user_properties.extend([
                 ('owned_model_bytes',model),('wire_payload_highwater_bytes',app.client.payload_highwater),

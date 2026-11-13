@@ -14,7 +14,7 @@ Screen { background: #101820; color: #d9e4ee; }
 #collection { height: 1; color: #a9bed0; }
 #workspace { height: 1fr; }
 #records { height: 2fr; min-height: 5; }
-#diagnostics { height: 1fr; min-height: 4; }
+#diagnostics { height: 1fr; min-height: 6; }
 #diagnostic_divider { height: 1; background: #1b2c3a; color: #8bded0; }
 #diagnostic_divider:focus { text-style: bold reverse; }
 .compact #health { height: 1; }
@@ -39,3 +39,13 @@ Confirmation, Help { align: center middle; background: #101820 85%; }
 .ascii .dialog, .ascii Input, .ascii Input:focus { border: ascii #8bded0; }
 .ascii #detail_scroll { border-top: ascii #365064; }
 .ascii #records, .ascii #detail_scroll, .ascii .dialog { scrollbar-size: 0 0; }
+
+#diagnostic_tabs { height: 2; }
+.compact #diagnostic_tabs { height: 1; }
+#diagnostic_status { height: 1; color: #a9bed0; }
+#diagnostic_records { height: 1fr; min-height: 2; }
+#diagnostic_records:focus { border: solid #8bded0; }
+#diagnostic_detail_scroll { height: 3; border-top: solid #365064; }
+#diagnostic_details { height: auto; }
+.ascii #diagnostic_records:focus { border: ascii #8bded0; }
+.ascii #diagnostic_records, .ascii #diagnostic_detail_scroll { scrollbar-size: 0 0; }

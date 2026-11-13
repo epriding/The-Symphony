@@ -15,6 +15,8 @@ from .client import ClientError, RuntimeClient
 from .tui_state import ViewState, label
 from .tui_dialogs import Confirmation, Help
 from .tui_layout import DiagnosticDivider
+from .tui_diagnostics import Diagnostics,DIAGNOSTIC_VIEWS
+from .tui_findings import read_findings
 from .protocol import CONTROL_OPS
 
 COLLECTIONS=('orders','positions','fills','events','findings')
@@ -39,6 +41,8 @@ class BotApp(App[int]):
     BINDINGS=[Binding('q','detach','Detach',priority=True),
               ('?','help','Help'),
               ('f2','expand_diagnostics','Expand diagnostics'),
+              Binding('f3','next_diagnostic','Diagnostic view',show=False),
+              Binding('f4','focus_records','Main table',show=False),
               Binding('[','shrink_diagnostics','Smaller',show=False),
               Binding(']','grow_diagnostics','Larger',show=False),
               Binding('ctrl+c','interrupt','Detach',show=False,priority=True),
@@ -97,9 +101,7 @@ class BotApp(App[int]):
             with Vertical(id='workspace'):
                 yield DataTable(id='records',cursor_type='row',zebra_stripes=True)
                 yield DiagnosticDivider()
-                with Vertical(id='diagnostics'):
-                    with VerticalScroll(id='detail_scroll',can_focus=True):
-                        yield Static('Waiting for a collection',id='record_details',markup=False)
+                yield Diagnostics()
         yield Footer()
 
     def on_mount(self) -> None:
@@ -145,7 +147,8 @@ class BotApp(App[int]):
         self.update_text('#diagnostic_divider','DIAGNOSTICS / F2 or Esc restore'
             if self.diagnostics_expanded else
             'DIAGNOSTICS / drag divider / [ smaller / ] larger / F2 expand')
-        self.query_one('#detail_scroll' if self.diagnostics_expanded else '#records').focus()
+        if self.diagnostics_expanded:self.focus_diagnostics()
+        else:self.query_one('#records').focus()
 
     def poll(self) -> None:
         if self._detaching:return
@@ -179,7 +182,9 @@ class BotApp(App[int]):
         self._next_attempt=0
         self._retry_delay=1
         self.render_status()
+        key=(self.state.generation,self.state.view_generation)
         await self.load_collection()
+        await self.load_diagnostics(key)
 
     async def load_collection(self) -> None:
         key=(self.state.generation,self.state.view_generation)
@@ -211,6 +216,20 @@ class BotApp(App[int]):
         self.state.page_revision=reply['revision']
         self.render_records()
 
+    async def load_diagnostics(self, key) -> None:
+        if key!=(self.state.generation,self.state.view_generation) or self._detaching:return
+        history=None
+        failure=None
+        try:
+            history=await read_findings(self.client,self.state.target,self.state.strategy)
+        except ClientError as error:
+            failure=error.code
+        if key!=(self.state.generation,self.state.view_generation) or self._detaching:return
+        diagnostic=self.query_one(Diagnostics)
+        if history is not None:diagnostic.history=history
+        diagnostic.failure=failure
+        diagnostic.render_diagnostics()
+
     def update_text(self, selector: str, content: str) -> None:
         widget=self.query_one(selector,Static)
         if widget.content!=content:
@@ -225,6 +244,7 @@ class BotApp(App[int]):
         status+=f' / last response {int(age)}s ago' if age!=float('inf') else ' / no observations yet'
         self.update_text('#connection',status)
         self.update_text('#notice',self.text(self.state.unknown or self.state.notice))
+        self.query_one(Diagnostics).render_status()
         bindings=tuple(self.control_allowed(op) for op in sorted(CONTROL_OPS))
         if bindings!=self._last_bindings:
             self._last_bindings=bindings
@@ -259,6 +279,7 @@ class BotApp(App[int]):
 
     def render_records(self) -> None:
         if self._detaching:return
+        self.query_one(Diagnostics).set_context((self.state.target,self.state.strategy))
         table=self.query_one('#records',DataTable)
         old_row=table.cursor_row
         selected=self._visible_rows[old_row].get('id') if old_row<len(self._visible_rows) else None
@@ -296,15 +317,8 @@ class BotApp(App[int]):
         self.render_details()
 
     def render_details(self) -> None:
-        if self._detaching:return
+        if self._detaching or not self.query('#records'):return
         lines=[]
-        if self.state.strategy is None and self.overview:
-            for key in ('recent_findings','recent_events'):
-                rows=self.overview.get(key,[])
-                lines.append(key.replace('_',' ').upper()+f' / {len(rows)} retained overview entries')
-                for row in rows:
-                    lines.append(' | '.join(f'{self.text(k)}: {self.text(v)}' for k,v in row.items()))
-            lines.append('Connection freshness does not prove fresh quotes. Recent windows are not full history.')
         index=self.query_one('#records',DataTable).cursor_row
         if index<len(self._visible_rows):
             lines.append('SELECTED RECORD / Enter focuses this scrollable pane')
@@ -319,10 +333,12 @@ class BotApp(App[int]):
         self.query_one('#record_details',Static).update('\n'.join(lines) or 'No rows in this collection scope.')
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        self.render_details()
+        if event.data_table.id=='records':self.render_details()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id!='records':return
         if self.state.strategy is not None:
+            self.query_one(Diagnostics).show_mode('details')
             self.query_one('#detail_scroll').focus()
         elif event.cursor_row<len(self._visible_rows):
             self.state.strategy=self._visible_rows[event.cursor_row]['name']
@@ -345,15 +361,31 @@ class BotApp(App[int]):
             self.state.collection=kind
             self.navigate()
 
+    def diagnostic_focused(self) -> bool:
+        return self.focused is not None and self.query_one(Diagnostics) in self.focused.ancestors
+
+    def focus_diagnostics(self) -> None:
+        mode=self.query_one(Diagnostics).mode
+        self.query_one('#detail_scroll' if mode=='details' else '#diagnostic_records').focus()
+
+    def action_next_diagnostic(self) -> None:
+        diagnostic=self.query_one(Diagnostics)
+        diagnostic.show_mode(DIAGNOSTIC_VIEWS[(DIAGNOSTIC_VIEWS.index(diagnostic.mode)+1)%3])
+        self.focus_diagnostics()
+
+    def action_focus_records(self) -> None:
+        if self.diagnostics_expanded:self.action_expand_diagnostics()
+        self.query_one('#records').focus()
+
     def action_next_pane(self) -> None:
-        if len(self.screen_stack)>1 or self.state.strategy is None:
+        if len(self.screen_stack)>1 or self.state.strategy is None or self.diagnostic_focused():
             self.screen.focus_next()
         else:
             self.state.collection=COLLECTIONS[(COLLECTIONS.index(self.state.collection)+1)%len(COLLECTIONS)]
             self.navigate()
 
     def action_previous_pane(self) -> None:
-        if len(self.screen_stack)>1 or self.state.strategy is None:
+        if len(self.screen_stack)>1 or self.state.strategy is None or self.diagnostic_focused():
             self.screen.focus_previous()
         else:
             self.state.collection=COLLECTIONS[(COLLECTIONS.index(self.state.collection)-1)%len(COLLECTIONS)]
