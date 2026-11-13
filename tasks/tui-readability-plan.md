@@ -1,6 +1,6 @@
 # TUI readability follow-up
 
-Status: Approved scope and autonomous execution in the conversation, 2026-11-13.
+Status: Complete under user-approved autonomous execution, 2026-11-13.
 Baseline: cbaefe4 on feature/trading-bot-tui. Original build tasks remain complete.
 Reference: user's screenshot and agreed combination of a larger bottom panel
 with an expanded diagnostic view. No additional approval gate is needed.
@@ -49,3 +49,12 @@ Final checks include actual PTYs (no user bot/public credentials) and fresh
 smoke/replay. Do not weaken old tests, deadlines or memory thresholds.
 Continue the canonical `.audit/trading-bot-tui.tsv` append-only. Cross-family
 review is unavailable per this thread's capability check; disclose limits.
+
+## Completion
+
+All five slices are implemented and committed in order. Final regression: 535
+passed; 39 focused UI/process cases, compilation, dependency checks, fresh
+smoke/replay and the documented real-terminal attach path passed. Fresh GPT-6
+Astra review found no Required defects; its optional j/k finding was fixed and
+regression-tested afterward. [Verification](../docs/verification/terminal-ui-readability.md)
+records evidence, terminal/render probes, mutation proof and review limits.

@@ -96,3 +96,9 @@ reviewed and tested subsequent fixes. Full host-transcript audit was unavailable
 the trail was checked against available conversation and artifacts. Synthetic
 PTY checks establish the tested terminal behavior, not every terminal emulator
 or a human visual usability review.
+
+## Readability follow-up
+
+The subsequent [readability verification](terminal-ui-readability.md) records
+the approved diagnostic layout, visible navigation and finding-filter changes.
+The results above describe the original build before those changes.

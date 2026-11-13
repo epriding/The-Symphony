@@ -63,22 +63,73 @@ The overview distinguishes service lifecycle, operator state, PAPER execution,
 data source, readiness, observation availability, capture location and cleanup
 problems. Missing values say `unknown`. Strategy rows include configured,
 disabled and unrouted strategies; mode and reason explain their actual state.
-Select a row to inspect its orders, positions, fills, events and findings.
+Highlight a strategy and press Enter to inspect its orders, positions, fills,
+events and findings. The heading puts the active view first, followed by the
+strategy name; visible tabs select the same views with the mouse. Row counts,
+revision and retention information appear as secondary metadata.
 The selected record pane exposes fields that do not fit in the table.
 
 | Key | Action |
 |---|---|
 | Up/Down or `j`/`k` | Select a record or scroll the focused pane |
-| Enter | Open a strategy, or focus selected-record details |
-| Tab / Shift-Tab | Change collection in detail; move focus on overview or dialogs |
+| Enter | Open a strategy; inspect a selected main record; expand a selected diagnostic |
+| Tab / Shift-Tab | Cycle main collection while focused there; move focus in diagnostics, overview or dialogs |
 | `n` | Next page, when available |
 | `b` | Return to the first page and request a refresh/reconnect |
-| Esc | Return to overview, cancel a dialog or acknowledge an unknown outcome |
+| Esc | Restore expanded diagnostics first; otherwise return to overview, cancel or acknowledge an unknown outcome |
+| F2 | Expand / restore diagnostics |
+| F3 | Cycle Findings, Events and Record details; focus diagnostics |
+| F4 | Return focus to the main table |
+| `[` / `]` | Shrink / grow the diagnostics split |
 | `?` | Show keys and control semantics |
 | `s` | Confirm start of a fresh session |
 | `p` / `r` | Pause / resume strategy decisions |
 | `x` | Confirm stop |
 | `q` / Ctrl-C | Detach from any view |
+
+## Diagnostics and finding filters
+
+The lower panel gets roughly one-third of the available workspace by default.
+Drag its divider to resize it, or use `[` / `]`. A focused divider also accepts
+Left/Right and Enter to expand. F2 expands diagnostics while retaining connection,
+execution/session state and control notices; F2 or Esc restores the split without
+losing the selected strategy or filter. F3 cycles the diagnostic views; F4 returns
+to the main table. On short terminals, the upper health summary and tab rows are
+compact; full observation fields remain in Record details.
+
+The three diagnostic views are:
+
+- **Findings:** severity, UTC time, strategy, author and summary. Select a row
+  to read full text, evidence and identifiers; Enter expands the selected record.
+  Info is cyan/teal, Warning amber and Error red. Uppercase labels also convey
+  severity in monochrome. Debug and Critical finding levels are not supported.
+- **Events:** the provider's bounded recent overview subset (up to eight entries),
+  explicitly labeled as a subset. The main strategy Events tab has its separate
+  paginated collection. An empty subset does not prove no older activity.
+- **Record details:** the full selected main record, strategy summary and session
+  observation fields, available through a scrollable pane.
+
+Finding checkboxes select any combination of **Info**, **Warning** and **Error**.
+**All** restores all three; **Warnings + Errors** hides informational findings.
+Use the mouse, or focus diagnostics and Shift-Tab to reach the filter controls;
+Space toggles a checkbox and Enter activates a preset. The current filter and
+matching/retained counts remain visible. No retained findings, no matching
+findings, and no selected severity have distinct messages.
+
+Filtering covers the entire retained window for the current scope: all strategies
+on the overview, or the selected strategy in detail. It is not limited to the
+first visible page. The client reads at most 128 retained findings via existing
+50-record requests, sorts by newest publication sequence, and filters locally.
+The main strategy Findings table uses the same filter and ordering, paged in
+50-record slices. Changing severity resets that table to its first page. The
+lower table scrolls through its bounded matches; `n` / `b` control main-table
+pagination. Complete history outside the retained window remains outside this UI.
+
+A changing window or incomplete read reports unavailable; it never presents a
+partial traversal as an empty match. A failed refresh may retain a clearly
+labeled previous finding view. A strategy/session change clears the old scope,
+and late replies cannot repopulate it. The split size and filters are local to
+the current terminal client and are not saved across launches.
 
 Visible views refresh about once per second, without overlapping polls.
 Routine refresh retains the current page. Pages show their revision, active or

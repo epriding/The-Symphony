@@ -57,3 +57,7 @@ Approved provider behavior, preserved for the future clients:
    manager keeps the service independent of a client terminal's lifecycle.
 
 Terminal-ui spec is approved. Its concrete build plan is also approved.
+
+The approved [readability follow-up](tasks/tui-readability-plan.md) is also
+complete: clearer view navigation, adjustable/expanded diagnostic views, and
+structured finding severity filters. See [verification](docs/verification/terminal-ui-readability.md).

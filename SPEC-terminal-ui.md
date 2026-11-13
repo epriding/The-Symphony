@@ -271,3 +271,9 @@ severity colors plus text, multi-select Info/Warning/Error filtering across the
 entire retained finding window with counts and meaningful empty states. Debug
 and Critical are excluded. Existing protocol, safety and lifetime requirements
 continue to apply. Earlier completion evidence describes the original build.
+
+Readability follow-up complete: 535 tests passed plus compilation, dependency,
+fresh offline smoke/replay, real-PTY and rendered-layout checks. See the
+[follow-up verification](docs/verification/terminal-ui-readability.md). Its
+layout/navigation requirements supersede the original combined detail pane;
+protocol, trading and client-lifetime boundaries remain unchanged.
