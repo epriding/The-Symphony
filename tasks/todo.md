@@ -104,12 +104,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T07: Discover matching Bitcoin windows
 
-- [ ] Implement T07.
+- [x] Implement T07.
 - Description: Add bounded official-series discovery for current and next windows through read-only public transports.
 - Acceptance:
-  - [ ] Discover Kalshi `KXBTC15M` and configured US Bitcoin series through paginated metadata; use canonical identities and typed UTC measurement boundaries, not guessed slugs or administrative expiry.
-  - [ ] Verify asset, environment, duration, reference/calculation, outcome mapping, and opening threshold. Missing/unknown/ambiguous counterparts skip entry and continue discovery; prepared future windows are not treated as settled merely because closed.
-  - [ ] Enforce response/page/result bounds, existing rate budgets, and retry backoff. Keep allowed public GET routes explicit; never expand transport access to account/order endpoints.
+  - [x] Discover Kalshi `KXBTC15M` and configured US Bitcoin series through paginated metadata; use canonical identities and typed UTC measurement boundaries, not guessed slugs or administrative expiry.
+  - [x] Verify asset, environment, duration, reference/calculation, outcome mapping, and opening threshold. Missing/unknown/ambiguous counterparts skip entry and continue discovery; prepared future windows are not treated as settled merely because closed.
+  - [x] Enforce response/page/result bounds, existing rate budgets, and retry backoff. Keep allowed public GET routes explicit; never expand transport access to account/order endpoints.
 - Verify: `python3 -m pytest -q tests/test_complement_discovery.py tests/test_paper_market_data.py tests/test_bot_transport_limits_v1.py` with saved public payload shapes and missing-window fixtures.
 - Dependencies: T01, T06.
 - Likely files: `src/paper_trading/window_discovery.py`, `src/api/interfaces/bounded_public.py`, `src/api/interfaces/polymarket_us_public.py`, `src/api/interfaces/kalshi.py`, `tests/test_complement_discovery.py`.

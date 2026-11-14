@@ -80,6 +80,21 @@ class PolymarketUSMarketData(MarketDataClient):
             result.append(market)
         return result
 
+    async def discover_windows(self, *, limit, cursor=None, series_id=375):
+        # Events carry official series membership; titles/slugs never select it.
+        offset = int(cursor or 0)
+        async def request():
+            return await self.api.client._request('GET', '/v1/events', query=dict(
+                seriesId=series_id, closed=False, limit=limit, offset=offset))
+        response = await self._read(request)
+        events = response['events']
+        rows = []
+        for event in events:
+            rows.extend(event.get('markets', []))
+            if len(rows) > limit:
+                raise ValueError('Discovery response exceeds result bound')
+        return rows, str(offset+limit) if len(events) == limit else None
+
     async def get_orderbook(self, market_id, outcome):
         slug = next(slug for slug, identity in self.identities.items() if identity == market_id)
         raw = await self._read(self.api.get_orderbook, slug=slug, outcome="YES")

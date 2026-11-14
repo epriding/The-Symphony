@@ -65,7 +65,7 @@ class BoundedPublicHTTP(AsyncPolymarketUS):
         super().__init__(**kwargs)
 
     async def _request(self, method, path, *, query=None, body=None, authenticated=False):
-        allowed = re.fullmatch(r'/v1/(?:markets(?:/[^/]+/(?:book|bbo|settlement))?|market/(?:id|slug)/[^/]+)', path)
+        allowed = re.fullmatch(r'/v1/(?:events|markets(?:/[^/]+/(?:book|bbo|settlement))?|market/(?:id|slug)/[^/]+)', path)
         if method != 'GET' or authenticated or body is not None or allowed is None:
             raise ValueError('Only public market GET operations are permitted')
         params = self._build_query_params(query) if query else None

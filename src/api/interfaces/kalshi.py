@@ -69,6 +69,14 @@ class KalshiMarketData(MarketDataClient):
         return [market_metadata(self.exchange, raw, self.overrides.get(raw["ticker"]))
                 for raw in response["markets"]]
 
+    async def discover_windows(self, *, limit, cursor=None, series_id=None):
+        # Public listing only; series filter is fixed to the approved experiment.
+        params = dict(series_ticker='KXBTC15M', limit=limit)
+        if cursor:
+            params['cursor'] = cursor
+        response = await self.api.get('/markets', params)
+        return response['markets'], response.get('cursor')
+
     async def get_orderbook(self, market_id, outcome):
         response = await self.api.get(f"/markets/{market_id}/orderbook")
         raw = response["orderbook_fp"]
