@@ -18,7 +18,7 @@ from .runtime_config import (_public_queue_limit, _public_startup_buffer_bytes,
 from .scheduler import Scheduler
 from .session import PaperSession
 from ..strategies.context import StrategyContext
-from ..utilities.classes import OrderIntent, OrderStatus, OrderType, Side, TimeInForce
+from ..utilities.classes import OrderIntent, OrderIntentBatch, OrderStatus, OrderType, Side, TimeInForce
 from ..utilities.market_events import PublicEventEnvelope, ReceiptSequencer
 from ..utilities.logger import BoundedLogHandler, SafeFormatter, redact
 
@@ -348,10 +348,30 @@ class BotRunner:
         if not isinstance(result, list) or len(result) > limits['max_intents_per_callback']:
             raise ValueError('Strategy result must be a bounded list of OrderIntent or None')
         identities = set()
+        flat = []
         def finite(value):
             return (not isinstance(value, bool) and isinstance(value, (int, float))
                     and math.isfinite(value))
-        for intent in result:
+        batch_ids = set()
+        for item in result:
+            if isinstance(item, OrderIntentBatch):
+                if (not isinstance(item.batch_id, str) or not item.batch_id or item.batch_id in batch_ids
+                        or not isinstance(item.legs, list) or not item.legs
+                        or len(item.legs) != len(item.quantity_ratios)
+                        or any(type(ratio) is not int or ratio <= 0 for ratio in item.quantity_ratios)
+                        or not finite(item.capital_ceiling) or item.capital_ceiling <= 0
+                        or item.execution_policy != 'paper_independent_legs'
+                        or item.dispatch_policy not in ('concurrent', 'sequential')
+                        or not finite(item.execution_deadline)
+                        or (item.expires_at is not None and not finite(item.expires_at))):
+                    raise ValueError('Malformed strategy batch')
+                batch_ids.add(item.batch_id)
+                flat.extend(item.legs)
+            else:
+                flat.append(item)
+        if len(flat) > limits['max_intents_per_callback']:
+            raise ValueError('Strategy legs exceed max_intents_per_callback')
+        for intent in flat:
             if (not isinstance(intent, OrderIntent) or intent.strategy != strategy_name
                     or not isinstance(intent.side, Side) or intent.outcome not in ('YES', 'NO')
                     or not isinstance(intent.tif, TimeInForce) or not isinstance(intent.order_type, OrderType)
@@ -439,7 +459,10 @@ class BotRunner:
                           decision=result, accepted=ready and not self._stopping and not self._stop.is_set())
             if ready and not self._stopping and not self._stop.is_set():
                 for intent in result:
-                    await self._session.submit(intent)
+                    if isinstance(intent, OrderIntentBatch):
+                        await self._session.submit_batch(intent)
+                    else:
+                        await self._session.submit(intent)
 
     async def _risk(self):
         self._control('risk_tick')

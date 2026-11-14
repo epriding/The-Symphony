@@ -18,12 +18,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T02: Admit linked strategy decisions
 
-- [ ] Implement T02.
+- [x] Implement T02.
 - Description: Extend the supervised callback boundary to carry a linked pair to the existing batch gateway without exposing mutable account/coordinator access.
 - Acceptance:
-  - [ ] Context-generated pair and leg identities are deterministic. Validate the entire callback result, strategy ownership, market membership, duplicate IDs, and flattened leg/byte limits before submitting any item.
-  - [ ] Route the pair through `submit_batch`; preserve existing individual-order callbacks, timeout/disable behavior, and paper-only ownership.
-  - [ ] Capture serialization round-trips linked decisions using existing allowed types; no arbitrary imports or global live-client construction.
+  - [x] Context-generated pair and leg identities are deterministic. Validate the entire callback result, strategy ownership, market membership, duplicate IDs, and flattened leg/byte limits before submitting any item.
+  - [x] Route the pair through `submit_batch`; preserve existing individual-order callbacks, timeout/disable behavior, and paper-only ownership.
+  - [x] Capture serialization round-trips linked decisions using existing allowed types; no arbitrary imports or global live-client construction.
 - Verify: `python3 -m pytest -q tests/test_complement_gateway.py tests/test_bot_loop_v1.py tests/test_bot_replay_v1.py`.
 - Dependencies: T01.
 - Likely files: `src/strategies/context.py`, `src/paper_trading/runtime.py`, `src/paper_trading/recording.py`, `src/utilities/classes.py`, `tests/test_complement_gateway.py`.

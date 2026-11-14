@@ -4,7 +4,7 @@ from hashlib import sha256
 import random
 
 from ..paper_trading.clock import IdGenerator
-from ..utilities.classes import OrderIntent
+from ..utilities.classes import OrderIntent, OrderIntentBatch
 
 
 class StrategyContext:
@@ -37,3 +37,9 @@ class StrategyContext:
             raise ValueError('Intent identifiers are supplied by the strategy context')
         values['intent_id'] = self._ids()
         return OrderIntent(**values)
+
+    def new_batch(self, **values):
+        if 'batch_id' in values or any(leg.strategy != self.strategy_name for leg in values['legs']):
+            raise ValueError('Batch identity must belong to the strategy context')
+        values['batch_id'] = self._ids()
+        return OrderIntentBatch(**values)
