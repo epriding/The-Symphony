@@ -130,9 +130,11 @@ class BotRunner:
         self._stop = asyncio.Event()
         self._wake = asyncio.Event()
         self._session = None
+        self._queue = None
         self._store = None
         self._tasks = []
         self._zombies = {}
+        self._recovery_blocked = set()
         self._producer_error = None
         self._ended = set()
         self._revision = 0
@@ -648,6 +650,50 @@ class BotRunner:
             for intent in manager.stop_loss_intents(snapshot):
                 intent = replace(intent, intent_id=self._system_ids(), created_at=self.clock())
                 await self._session.submit(intent)
+        if not self._zombies:
+            for slot in self.slots:
+                if slot.disabled and getattr(slot.strategy,'needs_account_ticks',False):
+                    await self._recovery_callback(slot,'disabled_recovery')
+
+    async def _recovery_callback(self, slot, action):
+        callback = getattr(slot.strategy,'on_shutdown',None)
+        name = slot.entry['name']
+        if callback is None or slot.context is None or name in self._recovery_blocked:
+            return False
+        snapshot = await self._session.state.snapshot()
+        charge = retained_bytes(snapshot)
+        self._check_memory(extra=charge)
+        slot.snapshot_bytes = charge
+        slot.context._set_time(snapshot.timestamp)
+        task = None
+        try:
+            task = asyncio.create_task(callback(snapshot))
+            try:
+                done, pending = await asyncio.wait({task},timeout=self.runtime['strategy_timeout_seconds'])
+            except BaseException:
+                task.cancel()
+                self._zombies[task] = time.monotonic()+self.runtime['shutdown_grace_seconds']
+                raise
+            if pending:
+                task.cancel()
+                self._zombies[task] = time.monotonic()+self.runtime['shutdown_grace_seconds']
+                raise TimeoutError('recovery callback deadline exceeded')
+            result = self._validate_result(slot,task.result())
+            if any(not isinstance(item,OrderIntent) or not item.reduce_only
+                   or item.side != Side.SELL for item in result):
+                raise ValueError('Recovery callbacks may only reduce inventory')
+        except Exception as error:
+            self._recovery_blocked.add(name)
+            self._control('recovery_error',strategy=name,reason=type(error).__name__)
+            self._logger.error('strategy %s recovery failed: %s',name,type(error).__name__)
+            return False
+        finally:
+            if task is None or task.done():
+                slot.snapshot_bytes = 0
+        self._control(action,strategy=name,decision=result)
+        for intent in result:
+            await self._session.submit(intent)
+        return bool(result)
 
     async def _compact(self):
         self._control('compact')
@@ -747,6 +793,7 @@ class BotRunner:
                     task.exception()
             if pending:
                 raise RuntimeError('strategy cancellation exceeded shutdown grace')
+        self._zombies.clear()
         for slot in self.slots:
             slot.snapshot_bytes = 0
 
@@ -755,7 +802,7 @@ class BotRunner:
         self._status['phase'] = 'stopping'
         self._control('stop', reason=self._status['reason'], failed=failed)
         await self._stop_callbacks()
-        if self.runtime['source'] == 'public' and not failed:
+        if self.runtime['source'] == 'public' and self._queue is not None:
             await self._cancel_orders()
             deadline = time.monotonic() + self.runtime['shutdown_grace_seconds']
             while time.monotonic() < deadline:
@@ -763,23 +810,13 @@ class BotRunner:
                 await self._session.engine.retry_reports()
                 submitted = False
                 for slot in self.slots:
-                    callback = getattr(slot.strategy, 'on_shutdown', None)
-                    if slot.disabled or callback is None:
+                    if slot.disabled and not getattr(slot.strategy,'needs_account_ticks',False):
                         continue
-                    snapshot = await self._session.state.snapshot()
-                    slot.context._set_time(snapshot.timestamp)
-                    result = self._validate_result(slot, await asyncio.wait_for(
-                        callback(snapshot), self.runtime['strategy_timeout_seconds']))
-                    if any(not isinstance(item, OrderIntent) or not item.reduce_only
-                           or item.side != Side.SELL for item in result):
-                        raise ValueError('Shutdown callbacks may only reduce inventory')
-                    self._control('shutdown_recovery', strategy=slot.entry['name'], decision=result)
-                    for intent in result:
-                        await self._session.submit(intent)
-                        submitted = True
+                    submitted = await self._recovery_callback(slot,'shutdown_recovery') or submitted
                 if not submitted and not self._unresolved():
                     break
                 await asyncio.sleep(.002)
+            await self._stop_callbacks()
             if self._unresolved():
                 raise RuntimeError('shutdown grace expired with unresolved orders or undelivered reports')
         self._control('drain', unresolved=bool(self._unresolved()), finite_boundary=self.runtime['source'] == 'synthetic')

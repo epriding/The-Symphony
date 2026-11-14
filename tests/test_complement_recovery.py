@@ -135,3 +135,67 @@ async def test_partial_settlement_before_next_callback_never_sells_matched_remai
     assert 'B:m:NO' in session.state.portfolios['PAPER'].positions
     assert len(session.engine.orders) == 2
     await session.finish()
+
+
+@pytest.mark.asyncio
+async def test_disabled_strategy_receives_only_bounded_recovery_while_other_strategy_runs(tmp_path):
+    import asyncio
+    from src.bot import BotRunner,replay_bot
+    from src.paper_trading.clock import VirtualClock
+    from bot_v1_support import valid_config,strategy_config,ControlledFeed,VENUES,eventually,stop_and_join
+    from test_bot_loop_v1 import NoAction,dispose,wait_for_feeds
+    class FailsAfterFill(ImmediateComplementStrategy):
+        async def on_snapshot(self,snapshot):
+            if snapshot.portfolios['PAPER'].strategy_positions.get('one'):
+                raise RuntimeError('forced callback failure after first fill')
+            return await super().on_snapshot(snapshot)
+    config=valid_config(source='public',strategies=[strategy_config('one'),strategy_config('healthy')])
+    config['strategies'][0]['settings'].update(markets={v:'m' for v in VENUES},
+        terms={v:['BTC','BRTI',START,START+900,'100','2','gte'] for v in VENUES},
+        max_quantity='1',max_pair_spend='1',entry_cutoff=1)
+    config['execution']['venues']['POLYMARKET_US']['outbound']={'seconds':.3}
+    config['runtime']['risk_interval_seconds']=.01
+    clock=VirtualClock(START+1)
+    feeds=[ControlledFeed(v,clock=clock) for v in VENUES]
+    runner=BotRunner(config,output_directory=tmp_path/'disabled',feeds=feeds,
+                     strategy_factories={'one':FailsAfterFill,'healthy':NoAction},clock=clock)
+    task=asyncio.create_task(runner.run())
+    try:
+        await wait_for_feeds(feeds)
+        for f in feeds:
+            bid,ask=(.39,.4) if f.exchange=='KALSHI' else (.5,.51)
+            await f.push_book(bids={bid:100},asks={ask:100})
+        await eventually(lambda: len(runner._session.engine.orders)==2)
+        recovered=False
+        for _ in range(200):
+            clock.advance(clock()+.01);runner._wake.set();await asyncio.sleep(.003)
+            if (runner.slots[0].disabled and not runner._session.state.portfolios['PAPER'].positions
+                    and not list(runner._session.state.portfolios['PAPER'].pending_orders)):
+                recovered=True;break
+        assert recovered,'disabled strategy left known liquid excess without recovery'
+        summary=await stop_and_join(runner,task)
+        assert not runner.slots[1].disabled
+        assert summary['accounts']['PAPER']['cash']['KALSHI']==pytest.approx(999.99)
+        replayed=await replay_bot(tmp_path/'disabled',tmp_path/'disabled-replay')
+        assert replayed['accounts']==summary['accounts']
+    finally:await dispose(task)
+
+
+@pytest.mark.asyncio
+async def test_recovery_timeout_returns_before_resistant_callback_releases():
+    import asyncio
+    from test_complement_rolling import setup_runner
+    runner,_=await setup_runner()
+    release=asyncio.Event()
+    class ResistantRecovery:
+        async def on_shutdown(self,snapshot):
+            try:await asyncio.Event().wait()
+            except asyncio.CancelledError:await release.wait()
+    runner.slots[0].strategy=ResistantRecovery()
+    runner.runtime['strategy_timeout_seconds']=.01
+    try:
+        assert not await asyncio.wait_for(runner._recovery_callback(runner.slots[0],'shutdown_recovery'),.3)
+        assert runner._zombies
+    finally:
+        release.set();await asyncio.sleep(.001)
+        await runner._stop_callbacks();await runner._session.finish()

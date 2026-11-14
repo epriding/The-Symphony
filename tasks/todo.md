@@ -235,6 +235,13 @@ Task completion requires its acceptance checks and verification, not just source
 - Verify: precision, candidate, integration, full regression, compilation.
 - Files: discovery, strategy, example assumptions, precision tests.
 
+## T04b: Recover after callback disable and bound cleanup callbacks
+
+- [x] A disabled immediate-pair strategy can only return bounded reduce-only recovery while healthy strategies continue. Public failure/shutdown also cancels entries and attempts safe cleanup when possible.
+- [x] Recovery callbacks retain snapshot accounting, timeout/cancellation supervision, capture/replay decisions, and no entry capability. Ledger/archive failures still propagate.
+- Verify: disabled-after-fill public-runtime regression, resistant recovery callback timeout, existing shutdown/recovery tests, full suite, compilation.
+- Files: runtime, replay, recovery tests.
+
 ## T14: Document and exercise live paper operation
 
 - [ ] Complete T14.

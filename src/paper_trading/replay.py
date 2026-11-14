@@ -247,7 +247,7 @@ async def _replay_runtime_session(directory, output_directory, *, strategy_facto
                         elif action == 'window_activation':
                             contexts[name].settings.update(markets=deepcopy(payload['markets']),
                                                            terms=deepcopy(payload['terms']))
-                        elif action == 'shutdown_recovery':
+                        elif action in ('shutdown_recovery','disabled_recovery'):
                             snapshot = await session.state.snapshot()
                             contexts[name]._set_time(snapshot.timestamp)
                             actual = BotRunner._validated_result(await asyncio.wait_for(
