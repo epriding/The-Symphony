@@ -1,7 +1,7 @@
 # Tasks: Immediate complement live paper strategy
 
-Status: approved for unattended `/build auto`; implementation in progress. See [plan.md](plan.md).
-Task completion requires its acceptance checks and verification, not just source edits. Proposed new test files below do not exist yet. Keep each task to at most five files; split before exceeding that limit.
+Status: software implementation and deterministic acceptance checks complete. T14 live two-transition smoke remains pending existing public-feed credentials. See [plan.md](plan.md) and [verification](../docs/COMPLEMENT_VERIFICATION.md).
+Task completion requires its acceptance checks and verification, not just source edits. The named regression files now exist. Keep each task to at most five files; split before exceeding that limit.
 
 ## T01: Price a candidate pair after fees
 
@@ -251,12 +251,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T14: Document and exercise live paper operation
 
-- [ ] Complete T14.
+- [ ] Complete the live portion of T14 after credentials are available. Documentation and final-code startup check are complete; no actual live transitions were observed.
 - Description: Provide the exact launch workflow and a bounded run against public markets using existing credentials and no real orders.
 - Acceptance:
-  - [ ] Document configuration copying, existing credential variable names, run/stop commands, automatic rolling, fee assumptions, daily stop, and interpretation of unfinished holdings in `docs/COMPLEMENT_PAPER.md`.
+  - [x] Document configuration copying, existing credential variable names, run/stop commands, automatic rolling, fee assumptions, daily stop, and interpretation of unfinished holdings in `docs/COMPLEMENT_PAPER.md`.
   - [ ] With the existing environment available, run the paper strategy across at least two window transitions and inspect artifacts. Zero entries is acceptable; missing credentials/readiness is reported as an operational limitation rather than success or another research gate.
-  - [ ] Record command, duration, observed windows, runtime outcome, and any limitations without secrets. Confirm independently that the launch has no real-order route; do not test private order placement.
+  - [x] Record command, duration, observed windows, runtime outcome, and any limitations without secrets. Confirm independently that the launch has no real-order route; do not test private order placement.
 - Verify: `python3 main.py run --config local-complement.json --output /tmp/complement-live-paper --duration 3600`; replay the completed capture into a different fresh directory. Adjust duration/start time to include two actual transitions; no profitable trade requirement.
 - Dependencies: T13.
 - Likely files: `docs/COMPLEMENT_PAPER.md`, `docs/BOT_RUNTIME.md`, one local/ignored run report if appropriate. Keep captures outside source control.
@@ -264,6 +264,6 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## Checkpoint E: Ready for the user's paper experiment
 
-- [ ] Required software checks pass and the documented command is usable.
-- [ ] Live-run evidence or the exact missing operational input is stated honestly; no real orders or claimed guaranteed profits.
+- [x] Required software checks pass and the documented command is usable.
+- [x] Live-run evidence or the exact missing operational input is stated honestly; no real orders or claimed guaranteed profits.
 - [ ] Review the completed implementation and results with the user before expanding to delayed-entry strategies.

@@ -1,13 +1,13 @@
 # Spec: Immediate Complement Arbitrage for Paper Trading
 
-Status: approved strategy scope; implementation plan pending review. Live paper execution uses matching normal-settlement terms as an experimental premise and accounts for actual venue outcomes independently.
+Status: approved and implemented for paper execution; live two-transition smoke pending existing public-feed credentials. Live paper execution uses matching normal-settlement terms as an experimental premise and accounts for actual venue outcomes independently.
 Date: 2026-11-13.
 Branch: `strategy/cross-exchange-complement-arbitrage`.
 Source: [approved strategy idea](../ideas/cross-exchange-complement-arbitrage.md).
 
 ## Objective
 
-Give the account owner a paper strategy that attempts to buy equal quantities of complementary Bitcoin 15-minute outcomes below their verified combined payout, after fees and conservative execution allowances. Target Kalshi and Polymarket US, with independently funded balances of $25–$50 per exchange.
+Give the account owner a paper strategy that attempts to buy equal quantities of complementary Bitcoin 15-minute outcomes below their assumed combined $1 payout under matching normal settlement terms, after fees and conservative execution allowances. Target Kalshi and Polymarket US, with independently funded balances of $25–$50 per exchange.
 
 Software success means correct decisions, realistic independent fills, bounded recovery, centralized risk enforcement, and reproducible accounting. The first economic evaluation uses live public markets, including failed attempts and remaining inventory. Backtesting and historical depth reconstruction are outside v1. Working software does not establish an edge; zero trades is an acceptable result when no eligible opportunity exists.
 
@@ -15,7 +15,7 @@ Software success means correct decisions, realistic independent fills, bounded r
 
 The user directed the work back to a practical live paper experiment, then explicitly requested a task plan before implementation. Matching CF Benchmarks index, measurement interval, opening threshold, outcome mapping, and normal calculation rules are the compatibility checks. An unconditional guarantee covering every exceptional exchange decision is not a prerequisite for paper execution. This is an experimental premise, not a claim that disagreement is impossible. Actual outcomes and delayed settlement remain independent for each venue.
 
-Do not add historical backtesting, a new research platform, or separate private-API recertification to the critical path. Use existing credential/feed setup when starting a run; missing credentials or failed data readiness still produce clear operational errors. No strategy implementation is authorized in this planning turn.
+Do not add historical backtesting, a new research platform, or separate private-API recertification to the critical path. Use existing credential/feed setup when starting a run; missing credentials or failed data readiness still produce clear operational errors. The user subsequently approved the implementation plan and unattended `/build auto` execution. See [operating guide](../COMPLEMENT_PAPER.md) and [verification evidence](../COMPLEMENT_VERIFICATION.md).
 
 ## Scope and Assumptions
 

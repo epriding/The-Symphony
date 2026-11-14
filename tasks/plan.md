@@ -1,6 +1,6 @@
 # Implementation plan: Live paper complement strategy
 
-Status: approved by the user for unattended `/build auto` execution. Implementation progress is tracked in todo.md.
+Status: software implementation and deterministic acceptance complete under the approved unattended `/build auto` run. The live two-transition smoke remains pending existing feed credentials. See [verification](../docs/COMPLEMENT_VERIFICATION.md) and todo.md.
 Scope: immediate pairing on rolling Bitcoin 15-minute markets, Kalshi and Polymarket US.
 Specification: [immediate complement strategy](../docs/specs/immediate-complement-arbitrage.md).
 Task list target: [todo.md](todo.md). This index references that checklist rather than duplicating task status.

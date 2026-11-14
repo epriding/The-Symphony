@@ -243,3 +243,7 @@ long-run deployment measurements remain separate release evidence. Synthetic
 fixtures are not authenticated capture or empirical calibration. Real trading
 algorithms, real-money execution, Rust UI and automatic crash/restart recovery
 remain future work.
+
+## Rolling complement paper experiment
+
+The registered `immediate-complement-v1` strategy uses this runtime for Kalshi/Polymarket US Bitcoin pairs. See [COMPLEMENT_PAPER.md](COMPLEMENT_PAPER.md) for the no-manual-ID configuration, synthetic proof, credentials, launch, daily stop, recovery, and report interpretation. [COMPLEMENT_VERIFICATION.md](COMPLEMENT_VERIFICATION.md) records validation and the live-startup limitation.
