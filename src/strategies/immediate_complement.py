@@ -115,6 +115,7 @@ class ImmediateComplementStrategy:
         self.active = None
         self.last_window = None
         self.last_reason = 'awaiting_pair'
+        self.last_candidate = None
         self.options = dict(max_pair_spend='5', max_quantity='10',
             min_net_profit_per_pair='.02', max_book_age=3, max_quote_skew=1,
             entry_timeout=1, recovery_timeout=5, recovery_attempts=3,
@@ -186,6 +187,10 @@ class ImmediateComplementStrategy:
                            recovery_end=deadline+float(self.options['recovery_timeout']))
         self.last_window = window
         self.last_reason = 'pair_proposed'
+        self.last_candidate = dict(batch_id=batch.batch_id,quantity=str(candidate.quantity),
+            projected_surplus=str(candidate.surplus),prices=[str(p) for p in candidate.prices],
+            fee_reserves=[str(f) for f in candidate.fee_reserves],
+            window_start=candidate.legs[0].terms_key[2],window_end=candidate.legs[0].terms_key[3])
         return [batch]
 
     def _recover(self, snapshot):

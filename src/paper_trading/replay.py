@@ -33,6 +33,8 @@ async def _apply_input(session, record):
     elif kind == 'order_update':
         await session._apply_cumulative_update(payload)
     elif kind == 'retire_market':
+        if not getattr(session,'_allow_recorded_retirement',False):
+            raise ValueError('Retirement requires a supported rolling runtime capture')
         if not await session.retire_market(**payload):
             raise ValueError('Captured retirement still has unresolved obligations')
     elif kind == "cancel":
@@ -174,6 +176,8 @@ async def _replay_runtime_session(directory, output_directory, *, strategy_facto
         session = PaperSession(config, VirtualClock(manifest['started_at']),
             capture_directory=output if runtime_config else None, audit_directory=output,
             history_store=store, limits=limits, runtime_config=runtime_config)
+        session._allow_recorded_retirement = ('rolling_retirement_v1' in
+            manifest.get('runtime_features',[]) and bool(runtime_config and runtime_config.get('rolling')))
         if runtime_config:
             session.recorder.manifest['identity_mapping'] = deepcopy(manifest.get('identity_mapping', {}))
         if strategy_factories is not None:
@@ -182,7 +186,8 @@ async def _replay_runtime_session(directory, output_directory, *, strategy_facto
                     continue
                 name = entry['name']
                 context = StrategyContext(name, config.strategy_portfolios[name], entry['settings'],
-                    session.clock, config.paper_execution.seed, config.paper_execution.session_id)
+                    session.clock, config.paper_execution.seed, config.paper_execution.session_id,
+                    execution=config.paper_execution)
                 contexts[name] = context
                 strategies[name] = strategy_factories[entry['factory']](context)
 
@@ -228,6 +233,8 @@ async def _replay_runtime_session(directory, output_directory, *, strategy_facto
                 payload = record['payload']
                 if record['kind'] == 'runtime_control':
                     action = payload['action']
+                    if action == 'compact':
+                        await compact()
                     if strategy_factories is not None:
                         name = payload.get('strategy')
                         if action == 'dispatch':
@@ -237,6 +244,18 @@ async def _replay_runtime_session(directory, output_directory, *, strategy_facto
                             snapshot = replace(snapshot, timestamp=payload['timestamp'])
                             contexts[name]._set_time(payload['timestamp'])
                             tasks[name] = asyncio.create_task(strategies[name].on_snapshot(snapshot))
+                        elif action == 'window_activation':
+                            contexts[name].settings.update(markets=deepcopy(payload['markets']),
+                                                           terms=deepcopy(payload['terms']))
+                        elif action == 'shutdown_recovery':
+                            snapshot = await session.state.snapshot()
+                            contexts[name]._set_time(snapshot.timestamp)
+                            actual = BotRunner._validated_result(await asyncio.wait_for(
+                                strategies[name].on_shutdown(snapshot),timeout),
+                                strategy_name=name,markets=session.state.markets,limits=limits)
+                            if encode(actual) != encode(payload['decision']):
+                                raise ValueError('Fresh shutdown recovery diverged')
+                            pending_intents.extend(actual)
                         elif action == 'completion':
                             task = tasks.pop(name, None)
                             if task is None:
@@ -279,14 +298,15 @@ async def _replay_runtime_session(directory, output_directory, *, strategy_facto
                             if not task.cancelled():
                                 task.exception()
                     session.record('runtime_control', payload)
-                elif record['kind'] == 'intent' and pending_intents:
+                elif record['kind'] in ('intent','batch') and pending_intents:
                     actual = pending_intents.popleft()
                     if encode(actual) != encode(payload):
                         raise ValueError('Fresh intent submission order diverged')
-                    await session.submit(actual)
+                    await _apply_input(session,dict(kind=record['kind'],payload=actual))
                 else:
                     await _apply_input(session, record)
-                await compact()
+                if 'compaction_boundaries_v1' not in manifest.get('runtime_features',[]):
+                    await compact()
                 await asyncio.sleep(0)
             if pending_intents:
                 raise ValueError('Capture ended before all fresh decisions were submitted')

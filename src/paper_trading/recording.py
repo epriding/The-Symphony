@@ -36,6 +36,7 @@ PROVENANCE_PATHS = (
     'src/paper_trading/models.py', 'src/paper_trading/fees.py',
     'src/paper_trading/orderbook.py', 'src/paper_trading/matching.py',
     'src/strategies/context.py', 'src/strategies/smoke.py',
+    'src/strategies/immediate_complement.py', 'src/paper_trading/window_discovery.py',
     'src/market_decisions/order_coordinator.py', 'src/market_decisions/risk_manager.py',
     'src/utilities/classes.py', 'src/utilities/trading_state.py',
     'src/utilities/trading_rules.py', 'src/utilities/market_events.py',
@@ -131,6 +132,9 @@ class Recorder:
                 # Serialize now: factories receive different copies of these original values.
                 self.manifest['runtime_config'] = json.loads(json.dumps(runtime_config, allow_nan=False))
                 self.manifest['identity_mapping'] = {}
+                self.manifest['runtime_features'] = ['compaction_boundaries_v1']
+                if 'rolling' in runtime_config:
+                    self.manifest['runtime_features'].append('rolling_retirement_v1')
                 self.manifest['context_initialization'] = dict(
                     seed=config.paper_execution.seed, session_id=config.paper_execution.session_id,
                     derivation='sha256(seed:name); sha256(name) intent prefix v1')
@@ -196,6 +200,10 @@ def read_capture(directory):
     schema_version = manifest.get("schema_version")
     if schema_version not in SUPPORTED_SCHEMA_VERSIONS or not manifest.get("finalized"):
         raise ValueError("Unsupported or incomplete capture")
+    features = manifest.get('runtime_features',[])
+    if not isinstance(features,list) or any(feature not in
+            ('compaction_boundaries_v1','rolling_retirement_v1') for feature in features):
+        raise ValueError('Unsupported capture runtime features')
     digest = sha256()
     count = 0
     row_limit = None

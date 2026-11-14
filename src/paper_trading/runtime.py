@@ -600,7 +600,9 @@ class BotRunner:
                 and item.reduce_only and item.side == Side.SELL for item in result)
             accepted = (ready or recovery) and not self._stopping and not self._stop.is_set()
             self._control('completion', strategy=slot.entry['name'], dispatch=slot.dispatch,
-                          decision=result, accepted=accepted)
+                          decision=result, accepted=accepted,
+                          reason=str(getattr(getattr(slot,'strategy',None),'last_reason',''))[:128],
+                          candidate=getattr(getattr(slot,'strategy',None),'last_candidate',None))
             if accepted:
                 for intent in result:
                     if isinstance(intent, OrderIntentBatch):
@@ -628,6 +630,7 @@ class BotRunner:
                 await self._session.submit(intent)
 
     async def _compact(self):
+        self._control('compact')
         if hasattr(self._session.engine, 'compact'):
             await self._session.engine.compact()
         if hasattr(self._session.reporter, 'observe_async'):

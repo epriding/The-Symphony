@@ -156,12 +156,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T10: Preserve capture and recorded replay
 
-- [ ] Implement T10.
+- [x] Implement T10.
 - Description: Extend the existing capture/replay lifecycle for pairs and rolling discovery; do not build historical backtesting.
 - Acceptance:
-  - [ ] Capture candidate decisions/reasons, pair identities, discovery/readiness/activation/retirement events, timers, daily stops, and observed execution/settlement inputs in causal order.
-  - [ ] Existing recorded-decision replay reproduces balances, fees, fills, recovery, and rollover without network reads or inventing post-capture liquidity. Older supported captures retain their documented behavior.
-  - [ ] Keep explicit schema/version handling, bounds, provenance, and incomplete-capture rejection. Do not capture credential values or private headers.
+  - [x] Capture candidate decisions/reasons, pair identities, discovery/readiness/activation/retirement events, timers, daily stops, and observed execution/settlement inputs in causal order.
+  - [x] Existing recorded-decision replay reproduces balances, fees, fills, recovery, and rollover without network reads or inventing post-capture liquidity. Older supported captures retain their documented behavior.
+  - [x] Keep explicit schema/version handling, bounds, provenance, and incomplete-capture rejection. Do not capture credential values or private headers.
 - Verify: `python3 -m pytest -q tests/test_complement_replay.py tests/test_bot_replay_v1.py tests/test_bot_replay_admission_v1.py`.
 - Dependencies: T04, T05, T09.
 - Likely files: `src/paper_trading/recording.py`, `src/paper_trading/replay.py`, `src/paper_trading/runtime.py`, `tests/test_complement_replay.py`.
