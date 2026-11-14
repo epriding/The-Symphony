@@ -74,3 +74,17 @@ async def test_halted_day_allows_reduce_only_and_subtracts_exit_fee_once():
                               session.state._risk_view())
     assert result.approved
     await session.finish()
+
+
+@pytest.mark.asyncio
+async def test_fresh_unsellable_inventory_is_zero_valued_and_still_trips_daily_stop():
+    session=await make_session()
+    manager,account=enable(session)
+    account.positions['A:m:YES']=Position('m','A','YES',10000,.5,Side.BUY,'one','PAPER')
+    account.balances['A']['USD'].cash-=5000
+    await book(session,bids={.1:1},asks={.5:100})
+    assert manager.daily_equity(session.state._risk_view()) == 15000.1
+    assert not account.daily_valuation_complete
+    manager.update_daily_risk(session.state._risk_view())
+    assert account.daily_halted
+    await session.finish()

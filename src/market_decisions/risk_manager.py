@@ -152,8 +152,12 @@ class RiskManager:
     def daily_equity(self, snapshot):
         """Owned cash plus full fresh bid-depth proceeds, less exit fee reserves."""
         portfolio = snapshot.portfolios[self.portfolio_id]
-        if self.equity(snapshot) is None:
+        portfolio.daily_valuation_complete = False
+        cash_view = replace(snapshot,portfolios={**snapshot.portfolios,
+            self.portfolio_id:replace(portfolio,positions={})})
+        if self.equity(cash_view) is None:
             return None
+        complete = True
         total = sum(Decimal(str(b.cash)) for currencies in portfolio.balances.values()
                     for b in currencies.values())
         for key, position in portfolio.positions.items():
@@ -173,14 +177,18 @@ class RiskManager:
                 worst = price
                 if not remaining:
                     break
-            if remaining or worst is None:
-                return None
+            if remaining:
+                complete = False
+            covered = position.size-float(remaining)
+            if worst is None or covered <= 0:
+                continue
             intent = OrderIntent(exchange=position.exchange, market_id=position.market_id,
                 outcome=position.outcome, strategy=position.strategy, side=Side.SELL,
                 price=worst, reduce_only=True)
-            fee = (self.fee_reserve_provider(intent, market, position.size, worst)
-                   if self.fee_reserve_provider else position.size*market.fee_per_contract)
-            total += proceeds-Decimal(str(fee))
+            fee = (self.fee_reserve_provider(intent, market, covered, worst)
+                   if self.fee_reserve_provider else covered*market.fee_per_contract)
+            total += max(Decimal(0),proceeds-Decimal(str(fee)))
+        portfolio.daily_valuation_complete = complete
         return float(total)
 
     def update_daily_risk(self, snapshot):
@@ -204,7 +212,8 @@ class RiskManager:
         if loss >= limit and limit > 0:
             account.daily_halted = True
         account.daily_overshoot = max(account.daily_overshoot, float(max(Decimal(0), loss-limit)))
-        return 'daily_loss_limit' if account.daily_halted else None
+        return ('daily_loss_limit' if account.daily_halted else
+                'daily_valuation_unavailable' if not account.daily_valuation_complete else None)
 
     def available_cash(self, portfolio: PortfolioState, exchange: str) -> float:
         balance = portfolio.balances.get(exchange, {}).get(self.config.currency)

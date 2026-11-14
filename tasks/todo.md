@@ -199,6 +199,13 @@ Task completion requires its acceptance checks and verification, not just source
 - [ ] Full tests, source compilation, and existing smoke/replay commands pass.
 - [ ] Review example defaults and confirm that no new private-API recertification or backtesting dependency was introduced.
 
+## T05b: Preserve losses when fresh depth cannot liquidate all holdings
+
+- [x] Value the covered bid depth after fees, assign zero to unsellable residual, and mark valuation incomplete. Latch a crossed daily limit even in this case; incomplete or stale valuations still forbid entries.
+- Added during full-matrix preparation after a failing regression exposed the missing-loss case.
+- Verify: daily risk tests, risk regression, full suite, compilation.
+- Files: risk manager, portfolio fields, reporting flag, daily risk tests.
+
 ## T13: Exercise the full failure matrix
 
 - [ ] Implement T13.

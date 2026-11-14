@@ -464,7 +464,8 @@ class BoundedReporter(Reporter):
                 reserved_cash=sum(order.commitment for order in portfolio.pending_orders),
                 liquidation=[self._liquidation_estimate(position, state) for position in portfolio.positions.values()],
                 daily=dict(day=portfolio.daily_day,start_equity=portfolio.daily_start_equity,
-                    halted=portfolio.daily_halted,loss=portfolio.daily_loss,overshoot=portfolio.daily_overshoot))
+                    halted=portfolio.daily_halted,loss=portfolio.daily_loss,overshoot=portfolio.daily_overshoot,
+                    valuation_complete=portfolio.daily_valuation_complete))
         return accounts
 
     def _summary_data(self, conn):
