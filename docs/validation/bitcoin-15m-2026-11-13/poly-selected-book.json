@@ -1,0 +1,80 @@
+{
+  "url": "https://gateway.polymarket.us/v1/markets/cpc-btc-updown-15m-2026-11-13-0545z/book",
+  "started_at": "2026-11-13T06:27:26.047684+00:00",
+  "received_at": "2026-11-13T06:27:26.227926+00:00",
+  "http_status": 200,
+  "headers": {
+    "Date": "Fri, 13 Nov 2026 06:27:26 GMT",
+    "Content-Type": "application/json",
+    "Age": "27",
+    "last-modified": "Fri, 13 Nov 2026 06:27:26 GMT",
+    "Cache-Control": "public, max-age=30"
+  },
+  "sha256": "ce8f794075d71e42c320cdcff76ce29c1cc39c162e90b85da33243307e72be63",
+  "body": {
+    "marketData": {
+      "marketSlug": "cpc-btc-updown-15m-2026-11-13-0545z",
+      "bids": [],
+      "offers": [],
+      "state": "MARKET_STATE_EXPIRED",
+      "stats": {
+        "openPx": {
+          "value": "0.5400",
+          "currency": "USD"
+        },
+        "closePx": {
+          "value": "0.0100",
+          "currency": "USD"
+        },
+        "lowPx": {
+          "value": "0.0100",
+          "currency": "USD"
+        },
+        "highPx": {
+          "value": "0.6800",
+          "currency": "USD"
+        },
+        "lastTradePx": {
+          "value": "0.0100",
+          "currency": "USD"
+        },
+        "settlementPx": {
+          "value": "0.0000",
+          "currency": "USD"
+        },
+        "sharesTraded": "202919.6700",
+        "notionalTraded": {
+          "value": "45369.7610",
+          "currency": "USD"
+        },
+        "lastTradeQty": "0.1800",
+        "openInterest": "0.0000",
+        "openSetTime": "2026-11-13T05:45:05.272697783Z",
+        "closeSetTime": "2026-11-13T06:00:00.004555590Z",
+        "highSetTime": "2026-11-13T05:46:28.574268026Z",
+        "lowSetTime": "2026-11-13T05:55:58.121817700Z",
+        "lastTradeSetTime": "2026-11-13T05:59:20.875859404Z",
+        "settlementSetTime": "2026-11-13T06:00:17.879558303Z",
+        "openInterestSetTime": "2026-11-13T06:00:16.033628085Z",
+        "notionalSetTime": "2026-11-13T05:59:20.875859404Z",
+        "settlementPriceCalculationMethod": "SETTLEMENT_PRICE_CALCULATION_METHOD_EVENT_TIER_1",
+        "currentPx": {
+          "value": "0.0100",
+          "currency": "USD"
+        },
+        "lastPriceSample": {
+          "longPx": {
+            "value": "0.0100",
+            "currency": "USD"
+          },
+          "shortPx": {
+            "value": "0.99",
+            "currency": "USD"
+          },
+          "ts": "2026-11-13T06:00:17.879558303Z"
+        }
+      },
+      "transactTime": "2026-11-13T06:00:17.879558303Z"
+    }
+  }
+}

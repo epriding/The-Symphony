@@ -1,0 +1,1030 @@
+{
+  "url": "https://www.polymarketexchange.com/files/notices",
+  "started_at": "2026-11-13T06:28:23.209838+00:00",
+  "received_at": "2026-11-13T06:28:24.288042+00:00",
+  "http_status": 200,
+  "headers": {
+    "Date": "Fri, 13 Nov 2026 06:28:24 GMT",
+    "Content-Type": "application/json",
+    "Cache-Control": "public, max-age=300"
+  },
+  "sha256": "b964d6c0bd1eeecd1ab4e6c2678cb3407e2d830d43a16608a3199407b47ea849",
+  "body": {
+    "files": [
+      {
+        "filename": "2026 Market Maker Program (2026.04.24).pdf",
+        "size": 399334,
+        "lastModified": "2026-05-04T20:42:42.000Z",
+        "eTag": "e207b88b890e1801196c08f6c9719004"
+      },
+      {
+        "filename": "2026 Referral Incentive Program (2026.01.16).pdf",
+        "size": 454760,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "c727553e1c5d0746632df68c746c6e8d"
+      },
+      {
+        "filename": "Amended Liquidity Provider Program (2026.04.07).pdf",
+        "size": 371481,
+        "lastModified": "2026-04-08T13:56:07.000Z",
+        "eTag": "0c75024f6a41d114647cc29ddcf588fc"
+      },
+      {
+        "filename": "Amended Market Liquidity Incentive Program (2026.04.07).pdf",
+        "size": 364136,
+        "lastModified": "2026-04-08T13:56:07.000Z",
+        "eTag": "ea8ba07c65bebaf23e9b2d3cdeee9157"
+      },
+      {
+        "filename": "Amended Market Maker Program (2026.04.07).pdf",
+        "size": 367490,
+        "lastModified": "2026-04-08T13:56:07.000Z",
+        "eTag": "383dbbbfd01812c5078768e421b03553"
+      },
+      {
+        "filename": "Amended Market Volume Incentive Program (2026.04.07).pdf",
+        "size": 356901,
+        "lastModified": "2026-04-08T13:56:07.000Z",
+        "eTag": "7a85738d30a705c649cc67a1b371f0fb"
+      },
+      {
+        "filename": "Amended Referral Program (2026.03.25).pdf",
+        "size": 473381,
+        "lastModified": "2026-03-26T15:38:03.000Z",
+        "eTag": "2e3d6ac40e76cd4125e4a1fef10bbf4b"
+      },
+      {
+        "filename": "Amended Standing Order Incentive Program (2026.03.03).pdf",
+        "size": 374673,
+        "lastModified": "2026-03-03T16:25:10.000Z",
+        "eTag": "c995b5b00131f990805283efe5e956ad"
+      },
+      {
+        "filename": "Exchange Ad-Hoc Maintenance Window Notice (2026.03.26).pdf",
+        "size": 129266,
+        "lastModified": "2026-03-26T18:30:09.000Z",
+        "eTag": "f9bc2f4ad473945e648b68e9b602ee55"
+      },
+      {
+        "filename": "Exchange Fees Update (2026.03.27).pdf",
+        "size": 337701,
+        "lastModified": "2026-03-30T02:23:29.000Z",
+        "eTag": "3790df59857a30fd5a9bc00d93d43242"
+      },
+      {
+        "filename": "Exchange Halt Notice (2026.03.17).pdf",
+        "size": 151471,
+        "lastModified": "2026-03-20T20:56:45.000Z",
+        "eTag": "073717238e5e3d3fdffa7861f92537d3"
+      },
+      {
+        "filename": "Exchange Maintenance Window Notice (2026.03.26).pdf",
+        "size": 128410,
+        "lastModified": "2026-03-24T14:19:33.000Z",
+        "eTag": "3c530e0b58ed39012718dbc0a778e389"
+      },
+      {
+        "filename": "Exchange Maintenance Window Notice (2026.04.01).pdf",
+        "size": 129328,
+        "lastModified": "2026-04-01T22:11:44.000Z",
+        "eTag": "426615cca30264017d0a178f3318be2c"
+      },
+      {
+        "filename": "Exchange Maintenance Window Notice (2026.04.24).pdf",
+        "size": 106481,
+        "lastModified": "2026-05-04T20:42:42.000Z",
+        "eTag": "3162f96a8f05c350b2b5164a4ae18b9f"
+      },
+      {
+        "filename": "Exchange Notice - AADC Amendment (2026.07.01).pdf",
+        "size": 132226,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "d19ae418a104a0bd5b4f85819fde808a"
+      },
+      {
+        "filename": "Exchange Notice - ADPC Amendment (2026.06.22).pdf",
+        "size": 134163,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "f5ebf950e68143117f42b9fb336bf227"
+      },
+      {
+        "filename": "Exchange Notice - ARANKC Amendment (2026.06.22).pdf",
+        "size": 134866,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "e87e5b8e68fb11fdbd778a47bf74ba40"
+      },
+      {
+        "filename": "Exchange Notice - Amended Daily Trading Incentive Program (2026.07.29).pdf",
+        "size": 310161,
+        "lastModified": "2026-07-31T10:41:30.000Z",
+        "eTag": "628d98ccd751110027d9db1d65ad8825"
+      },
+      {
+        "filename": "Exchange Notice - Amended Deposit Incentive Program (2026.08.17).pdf",
+        "size": 360251,
+        "lastModified": "2026-08-26T20:07:12.000Z",
+        "eTag": "c7527ec5edfebf3172dfc4c778a228e1"
+      },
+      {
+        "filename": "Exchange Notice - Amended Deposit Incentive Program (2026.09.18).pdf",
+        "size": 401308,
+        "lastModified": "2026-09-22T14:19:04.000Z",
+        "eTag": "ca74abc91272512aab7934ea2e9279dd"
+      },
+      {
+        "filename": "Exchange Notice - Amended Deposit Incentive Program (2026.10.26).pdf",
+        "size": 372991,
+        "lastModified": "2026-10-28T21:23:20.000Z",
+        "eTag": "62eaf7ad81c9b698cadda5929734c44a"
+      },
+      {
+        "filename": "Exchange Notice - Amended Deposit and Trading Incentive Program (2026.10.26).pdf",
+        "size": 433501,
+        "lastModified": "2026-10-28T21:23:37.000Z",
+        "eTag": "cdcb5cf2f12891bf56ae7a0d4d1b29bc"
+      },
+      {
+        "filename": "Exchange Notice - Amended Market Liquidity Incentive Program (2026.11.03).pdf",
+        "size": 305663,
+        "lastModified": "2026-11-10T22:12:10.000Z",
+        "eTag": "e0112e78d9e08d6cb5497cfa3097c560"
+      },
+      {
+        "filename": "Exchange Notice - Amended Refer-A-Friend Incentive Program (2026.08.10).pdf",
+        "size": 316705,
+        "lastModified": "2026-08-10T18:57:19.000Z",
+        "eTag": "ad3e9ed998213f6993809f650bb554c5"
+      },
+      {
+        "filename": "Exchange Notice - Amended Refer-A-Friend Incentive Program (2026.08.26).pdf",
+        "size": 416782,
+        "lastModified": "2026-08-26T20:07:13.000Z",
+        "eTag": "083d9b0d7f68f3b436dcce5b95f1746f"
+      },
+      {
+        "filename": "Exchange Notice - Amended Refer-A-Friend Incentive Program (2026.10.26).pdf",
+        "size": 421278,
+        "lastModified": "2026-10-30T13:56:11.000Z",
+        "eTag": "31362c733b105e04fbab1ef2222af8f4"
+      },
+      {
+        "filename": "Exchange Notice - Amended Refer-A-Friend Incentive Program (Withdrawn) (2026.08.10).pdf",
+        "size": 316705,
+        "lastModified": "2026-08-18T21:59:40.000Z",
+        "eTag": "ad3e9ed998213f6993809f650bb554c5"
+      },
+      {
+        "filename": "Exchange Notice - Amended Referral Incentive Program (2026.08.24).pdf",
+        "size": 422925,
+        "lastModified": "2026-08-27T14:59:16.000Z",
+        "eTag": "bf53a65bee04748684e975aa0cafbf80"
+      },
+      {
+        "filename": "Exchange Notice - Amended Referral Program (2026.07.14).pdf",
+        "size": 348055,
+        "lastModified": "2026-07-15T13:47:04.000Z",
+        "eTag": "519259d9d40f6d9da29b1b26a46b92ad"
+      },
+      {
+        "filename": "Exchange Notice - Amended Sequential Incentive Program (2026.10.08).pdf",
+        "size": 495476,
+        "lastModified": "2026-10-16T14:39:54.000Z",
+        "eTag": "ba0fde3964a9da32982064304d1ea32b"
+      },
+      {
+        "filename": "Exchange Notice - Amended Sequential Incentive Program (2026.10.26).pdf",
+        "size": 423549,
+        "lastModified": "2026-10-28T21:22:55.000Z",
+        "eTag": "bee82e51984df162b49721d1e723f530"
+      },
+      {
+        "filename": "Exchange Notice - Amended Series-Based Maker Volume Incentive Program (2026.09.30).pdf",
+        "size": 382612,
+        "lastModified": "2026-10-07T18:37:34.000Z",
+        "eTag": "383781ae9bd4e06375beadec59a03f1b"
+      },
+      {
+        "filename": "Exchange Notice - Amendment to Entity Participant and Clearing Member Agreement (2026.05.19).pdf",
+        "size": 134001,
+        "lastModified": "2026-05-19T18:15:44.000Z",
+        "eTag": "b687a3654df50fc64d663822aa24d5b8"
+      },
+      {
+        "filename": "Exchange Notice - Amendment to Individual Participant and Clearing Member Agreement (2026.05.19).pdf",
+        "size": 133103,
+        "lastModified": "2026-05-19T18:15:44.000Z",
+        "eTag": "138b2b27db7923fbae18657ecb8cfeb0"
+      },
+      {
+        "filename": "Exchange Notice - Amendment to Maker Rebate (2026.10.02).pdf",
+        "size": 154490,
+        "lastModified": "2026-10-02T22:15:42.000Z",
+        "eTag": "f7601976925fdaa32162e3fef12a9821"
+      },
+      {
+        "filename": "Exchange Notice - Amendment to Taker and Maker Rebate Tiers (2026.10.23).pdf",
+        "size": 159536,
+        "lastModified": "2026-10-23T21:03:04.000Z",
+        "eTag": "0deb9a38fa095b555d8443c41b60deb7"
+      },
+      {
+        "filename": "Exchange Notice - Amendment to Tiered Taker Fee Rebate (2026.10.02).pdf",
+        "size": 153305,
+        "lastModified": "2026-10-02T22:15:42.000Z",
+        "eTag": "29890bd40a36176736662456049dfbd3"
+      },
+      {
+        "filename": "Exchange Notice - Amendment to Website Terms of Use (2026.05.27).pdf",
+        "size": 109070,
+        "lastModified": "2026-05-27T20:35:57.000Z",
+        "eTag": "270f0f0cb8f3b9b12f8210028b7e3ea2"
+      },
+      {
+        "filename": "Exchange Notice - Block Trade Promotional Period Extension (2026.09.25).pdf",
+        "size": 146103,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "f4d6d6847eb2b8bd51825e0e6e6812bf"
+      },
+      {
+        "filename": "Exchange Notice - CAOC Amendment (2026.07.14).pdf",
+        "size": 188021,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "c2dfbbb57548706e582fc7a32bd1841f"
+      },
+      {
+        "filename": "Exchange Notice - CAOC Amendment (2026.09.14).pdf",
+        "size": 200545,
+        "lastModified": "2026-09-14T17:13:18.000Z",
+        "eTag": "45f3e98926136c4149862de1fcfdf62c"
+      },
+      {
+        "filename": "Exchange Notice - CAOC Amendment (2026.09.22).pdf",
+        "size": 193393,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "895278e23b491f51e3711a6413b87ed6"
+      },
+      {
+        "filename": "Exchange Notice - CCRYOC Amendment (2026.09.22).pdf",
+        "size": 186677,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "eb52b7ca4b900be5561fc0bd06e6cd22"
+      },
+      {
+        "filename": "Exchange Notice - CPC Amendment (2026.07.14).pdf",
+        "size": 198690,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "19b74a88248299ed06fff0a4cccec278"
+      },
+      {
+        "filename": "Exchange Notice - CPCBNB Amendment (2026.10.20).pdf",
+        "size": 185003,
+        "lastModified": "2026-10-26T16:38:50.000Z",
+        "eTag": "b8753575745cad7d790aba15c849b72c"
+      },
+      {
+        "filename": "Exchange Notice - CPCBTC Amendment (2026.09.11).pdf",
+        "size": 183703,
+        "lastModified": "2026-09-14T17:13:18.000Z",
+        "eTag": "6154498e41fba2da8d097bb755cc050d"
+      },
+      {
+        "filename": "Exchange Notice - CPCBTC Amendment (2026.09.15).pdf",
+        "size": 183693,
+        "lastModified": "2026-09-21T14:41:22.000Z",
+        "eTag": "63bee3f847b9031f542e63f65aded529"
+      },
+      {
+        "filename": "Exchange Notice - CPCBTC Amendment (2026.10.20).pdf",
+        "size": 184602,
+        "lastModified": "2026-10-26T16:38:49.000Z",
+        "eTag": "fea6c249a1424bae51a28608d85d8259"
+      },
+      {
+        "filename": "Exchange Notice - CPCDOGE Amendment (2026.10.20).pdf",
+        "size": 186387,
+        "lastModified": "2026-10-26T16:38:49.000Z",
+        "eTag": "f94bbb45c476844b5433f8949801eb4f"
+      },
+      {
+        "filename": "Exchange Notice - CPCETH Amendment (2026.09.11).pdf",
+        "size": 184245,
+        "lastModified": "2026-09-14T17:13:18.000Z",
+        "eTag": "7632c39867ab1e9227ad64ecb52a35df"
+      },
+      {
+        "filename": "Exchange Notice - CPCETH Amendment (2026.09.15).pdf",
+        "size": 184221,
+        "lastModified": "2026-09-21T14:41:22.000Z",
+        "eTag": "95059fe24e802a77ae9d1d2d81a8f17d"
+      },
+      {
+        "filename": "Exchange Notice - CPCETH Amendment (2026.10.20).pdf",
+        "size": 185149,
+        "lastModified": "2026-10-26T16:38:49.000Z",
+        "eTag": "7a7368a7ece55057eefe1a96c2a71966"
+      },
+      {
+        "filename": "Exchange Notice - CPCHYPE Amendment (2026.10.20).pdf",
+        "size": 185941,
+        "lastModified": "2026-10-26T16:38:48.000Z",
+        "eTag": "35606aee6ab6bb0627c3ff043dd35875"
+      },
+      {
+        "filename": "Exchange Notice - CPCNEAR Amendment (2026.10.20).pdf",
+        "size": 184660,
+        "lastModified": "2026-10-26T16:38:48.000Z",
+        "eTag": "c5085593f357d747c558da3cfd5d9dbf"
+      },
+      {
+        "filename": "Exchange Notice - CPCSOL Amendment (2026.09.11).pdf",
+        "size": 183337,
+        "lastModified": "2026-09-14T17:13:19.000Z",
+        "eTag": "5a9eac85f50f8f83ede1364c57a41b4f"
+      },
+      {
+        "filename": "Exchange Notice - CPCSOL Amendment (2026.09.15).pdf",
+        "size": 183327,
+        "lastModified": "2026-09-21T14:41:22.000Z",
+        "eTag": "085e9d3b244c35b4db8b6423c4d1e82c"
+      },
+      {
+        "filename": "Exchange Notice - CPCSOL Amendment (2026.10.20).pdf",
+        "size": 184239,
+        "lastModified": "2026-10-26T16:38:48.000Z",
+        "eTag": "751149aaf5c72aafa7115c6722bb56cb"
+      },
+      {
+        "filename": "Exchange Notice - CPCXRP Amendment (2026.10.20).pdf",
+        "size": 184739,
+        "lastModified": "2026-10-26T16:38:47.000Z",
+        "eTag": "7f4003a07d51e642b6859b940ff30ab4"
+      },
+      {
+        "filename": "Exchange Notice - CPCZEC Amendment (2026.10.20).pdf",
+        "size": 185652,
+        "lastModified": "2026-10-26T16:38:47.000Z",
+        "eTag": "238788ebf5f9a7dd758b3b135099a6da"
+      },
+      {
+        "filename": "Exchange Notice - CPOC Amendment (2026.09.22).pdf",
+        "size": 188568,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "ca20f442dbd093824ca927d96f6b1c30"
+      },
+      {
+        "filename": "Exchange Notice - CROSS Amendment (2026.09.22).pdf",
+        "size": 202207,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "4a27f914cf34cb82ec1f85597e4d952b"
+      },
+      {
+        "filename": "Exchange Notice - CROSS Amendment (2026.10.07).pdf",
+        "size": 206917,
+        "lastModified": "2026-10-07T18:37:34.000Z",
+        "eTag": "bb071e15d64bfd6067bd3e44fd8c81f8"
+      },
+      {
+        "filename": "Exchange Notice - Daily Trading Incentive Program (2026.06.02).pdf",
+        "size": 394972,
+        "lastModified": "2026-06-03T15:20:47.000Z",
+        "eTag": "392acd57bde6793116b3167e4461ded4"
+      },
+      {
+        "filename": "Exchange Notice - Daily Trading Incentive Program (2026.06.16).pdf",
+        "size": 329904,
+        "lastModified": "2026-06-17T16:44:29.000Z",
+        "eTag": "6d6354243ada22ea3e0ab4b8e23da9dd"
+      },
+      {
+        "filename": "Exchange Notice - Deposit and Trading Incentive Program (2026.08.12).pdf",
+        "size": 295791,
+        "lastModified": "2026-08-12T22:15:05.000Z",
+        "eTag": "b8276dfba4a25aecef20ef02ef9fb070"
+      },
+      {
+        "filename": "Exchange Notice - Deposit and Trading Incentive Program (2026.08.24).pdf",
+        "size": 429777,
+        "lastModified": "2026-08-24T23:17:17.000Z",
+        "eTag": "fc73c5ee4cc492c51f990be4c6b267ad"
+      },
+      {
+        "filename": "Exchange Notice - Deposit and Trading Incentive Program (Withdrawn) (2026.08.12).pdf",
+        "size": 295791,
+        "lastModified": "2026-08-18T21:59:40.000Z",
+        "eTag": "b8276dfba4a25aecef20ef02ef9fb070"
+      },
+      {
+        "filename": "Exchange Notice - Disruption Account Credit (2026.06.14).pdf",
+        "size": 181391,
+        "lastModified": "2026-06-15T16:00:57.000Z",
+        "eTag": "14e78c339899f8065e7566a8db007870"
+      },
+      {
+        "filename": "Exchange Notice - Disruption Account Credit (2026.06.16).pdf",
+        "size": 180502,
+        "lastModified": "2026-06-17T16:44:29.000Z",
+        "eTag": "cb21b8c839fc35b1f149b98b001b2698"
+      },
+      {
+        "filename": "Exchange Notice - Disruption Account Credit (2026.06.24).pdf",
+        "size": 170378,
+        "lastModified": "2026-06-24T19:48:23.000Z",
+        "eTag": "17505402499b5a0310d6dc2bf52c9bb1"
+      },
+      {
+        "filename": "Exchange Notice - Duplicated Settlement Account Credit (2026.07.02).pdf",
+        "size": 172741,
+        "lastModified": "2026-07-03T03:07:56.000Z",
+        "eTag": "2cff464cc8779ad7f4db8dbfd52b0471"
+      },
+      {
+        "filename": "Exchange Notice - ENWC Amendment (2026.07.14).pdf",
+        "size": 201748,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "4d765358e7a97e68de7dfc517a50f49c"
+      },
+      {
+        "filename": "Exchange Notice - EWC Amendment (2026.07.01).pdf",
+        "size": 148632,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "8610be66f8a66d2623184b95f3da6513"
+      },
+      {
+        "filename": "Exchange Notice - Fee Change for Combination Athletic Event Contracts (2026.11.11).pdf",
+        "size": 88612,
+        "lastModified": "2026-11-11T17:26:21.000Z",
+        "eTag": "0e56b4dfa09df992a98d9171ed5aabde"
+      },
+      {
+        "filename": "Exchange Notice - Fee Rebate Program (2026.06.16).pdf",
+        "size": 168395,
+        "lastModified": "2026-06-17T16:44:29.000Z",
+        "eTag": "1d6249e86b121b17f9a410905be0419e"
+      },
+      {
+        "filename": "Exchange Notice - Fee Schedule (Withdrawn) (2026.08.28).pdf",
+        "size": 178131,
+        "lastModified": "2026-09-03T13:31:35.000Z",
+        "eTag": "f48c46832a61001099e0c4751312793b"
+      },
+      {
+        "filename": "Exchange Notice - Fee Schedule Update (2026.06.24).pdf",
+        "size": 160392,
+        "lastModified": "2026-07-01T19:19:42.000Z",
+        "eTag": "807b124e4da0d21f36321ba2c0e0b54e"
+      },
+      {
+        "filename": "Exchange Notice - MLB Scheduling Issue Adjustment (2026.10.09).pdf",
+        "size": 144417,
+        "lastModified": "2026-10-10T18:09:31.000Z",
+        "eTag": "e56c2fbe5388fe3e22e13ee1969e80e2"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.06.09).pdf",
+        "size": 129667,
+        "lastModified": "2026-06-10T15:47:17.000Z",
+        "eTag": "767c2bf7e5c95b483a5e4a1dabb85b0c"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.06.23).pdf",
+        "size": 93727,
+        "lastModified": "2026-06-24T18:53:05.000Z",
+        "eTag": "36c997964a0037ca47a8af738c5e975f"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.06.25).pdf",
+        "size": 111093,
+        "lastModified": "2026-06-26T01:44:39.000Z",
+        "eTag": "17151ad3d31f7ca2b4b0064f0a7094dd"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.06.29).pdf",
+        "size": 92291,
+        "lastModified": "2026-06-30T17:41:43.000Z",
+        "eTag": "b6378e284746b5d873281bc324087634"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.07.07).pdf",
+        "size": 92248,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "8eb2fd2e8e1a177ddb0da3408b5dfbe2"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.07.09).pdf",
+        "size": 92560,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "a72a3893630edb4bbb60ba4376c831aa"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.07.14).pdf",
+        "size": 93758,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "5f5bffe1cf4853f4bf58364f1fdedbd1"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.07.23).pdf",
+        "size": 112637,
+        "lastModified": "2026-07-23T21:47:25.000Z",
+        "eTag": "dfce091509a1f470ea8c41d27a57d172"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.08.10).pdf",
+        "size": 93633,
+        "lastModified": "2026-08-10T18:57:19.000Z",
+        "eTag": "8703523bdd695ce8c6ede04d91ebfad7"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.08.20).pdf",
+        "size": 111750,
+        "lastModified": "2026-08-20T22:43:49.000Z",
+        "eTag": "ee2acb7cc4e7576f393aea2e97d9fbb0"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.08.24).pdf",
+        "size": 94208,
+        "lastModified": "2026-08-24T21:26:33.000Z",
+        "eTag": "bcb090690ad9100d8197f900dda73049"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.08.31).pdf",
+        "size": 93246,
+        "lastModified": "2026-09-01T22:30:56.000Z",
+        "eTag": "fb6e7a0a2b4702c492709b5597239026"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.09.01).pdf",
+        "size": 110965,
+        "lastModified": "2026-09-01T22:30:56.000Z",
+        "eTag": "3674315745aaac3a3ba6535cda8ec20f"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.09.05).pdf",
+        "size": 93208,
+        "lastModified": "2026-09-04T21:00:14.000Z",
+        "eTag": "b8ec6d41fff13487ef89a8b0919eb988"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.09.06).pdf",
+        "size": 92866,
+        "lastModified": "2026-09-04T21:00:14.000Z",
+        "eTag": "693f77682d74b60107f332ddfd207ac8"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.09.08).pdf",
+        "size": 96472,
+        "lastModified": "2026-09-07T16:08:05.000Z",
+        "eTag": "572596169a05c46b549a2b3a80c8be01"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.09.09).pdf",
+        "size": 93806,
+        "lastModified": "2026-09-08T21:22:31.000Z",
+        "eTag": "c2a7c231db9399164d216376b6e82567"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.09.11).pdf",
+        "size": 111718,
+        "lastModified": "2026-09-10T21:55:53.000Z",
+        "eTag": "0971255cc54a7e5eb1d6b5d483dcda10"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.09.14).pdf",
+        "size": 75218,
+        "lastModified": "2026-09-13T21:09:44.000Z",
+        "eTag": "3093f00af4b06f353f4d85a9f8236d24"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.09.18).pdf",
+        "size": 104362,
+        "lastModified": "2026-09-21T14:15:46.000Z",
+        "eTag": "01dc79abe64f7a24db0fcf11940f04f9"
+      },
+      {
+        "filename": "Exchange Notice - Maintenance Window (2026.09.24).pdf",
+        "size": 116183,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "7caf750076136f02881d2f909b6dd9e9"
+      },
+      {
+        "filename": "Exchange Notice - Maker Rebate on Combination Contracts (2026.10.02).pdf",
+        "size": 147976,
+        "lastModified": "2026-10-02T22:15:42.000Z",
+        "eTag": "6614e74433b88a8a00b36cf595b64c49"
+      },
+      {
+        "filename": "Exchange Notice - PACCC Amendment (2026.07.14).pdf",
+        "size": 208757,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "2830ea419449062148933b41ff922140"
+      },
+      {
+        "filename": "Exchange Notice - PMXN-2026-1 Combination Contracts (2026.11.04).pdf",
+        "size": 126220,
+        "lastModified": "2026-11-04T19:09:39.000Z",
+        "eTag": "d885b3b98df4235779bbe9ab13e44532"
+      },
+      {
+        "filename": "Exchange Notice - PVWC Amendment (2026.07.14).pdf",
+        "size": 204464,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "80996a9f6ccd8d05eb5d3ad801683ce8"
+      },
+      {
+        "filename": "Exchange Notice - Positions Data Delay Account Credit (2026.07.23).pdf",
+        "size": 171635,
+        "lastModified": "2026-07-23T20:15:53.000Z",
+        "eTag": "367bfde5efb437131aaef16b716bd89e"
+      },
+      {
+        "filename": "Exchange Notice - Privacy Policy Update (2026.09.15).pdf",
+        "size": 128739,
+        "lastModified": "2026-09-16T06:44:04.000Z",
+        "eTag": "f47e9d1bc9085a0577fcceb61669d1f6"
+      },
+      {
+        "filename": "Exchange Notice - Rulebook Amendment (2026.08.28).pdf",
+        "size": 181142,
+        "lastModified": "2026-09-03T13:31:35.000Z",
+        "eTag": "7339f4c4d9dac745bdb895fd04d047f7"
+      },
+      {
+        "filename": "Exchange Notice - Rulebook Amendment (2026.09.16).pdf",
+        "size": 153988,
+        "lastModified": "2026-09-22T14:19:04.000Z",
+        "eTag": "9a880d62b5ad3606e2e4683016853835"
+      },
+      {
+        "filename": "Exchange Notice - Rulebook Update (2026.06.02).pdf",
+        "size": 220612,
+        "lastModified": "2026-06-03T15:20:47.000Z",
+        "eTag": "7b69a0dc893617e0075b7082135725f3"
+      },
+      {
+        "filename": "Exchange Notice - Rulebook Update (2026.06.17).pdf",
+        "size": 2114905,
+        "lastModified": "2026-06-18T14:22:03.000Z",
+        "eTag": "a65dc9b1c216f71db161f8cbefbc8144"
+      },
+      {
+        "filename": "Exchange Notice - Rulebook Update (RFQ) (2026.07.02).pdf",
+        "size": 166870,
+        "lastModified": "2026-07-02T13:44:33.000Z",
+        "eTag": "93a0ca3de1e2b0b59512da74ad51561f"
+      },
+      {
+        "filename": "Exchange Notice - Rulebook Update (RFQ) (Withdrawn) (2026.07.02).pdf",
+        "size": 166870,
+        "lastModified": "2026-07-17T16:36:31.000Z",
+        "eTag": "93a0ca3de1e2b0b59512da74ad51561f"
+      },
+      {
+        "filename": "Exchange Notice - Rulebook Update Advance Limit (2026.06.08).pdf",
+        "size": 150210,
+        "lastModified": "2026-06-08T21:23:19.000Z",
+        "eTag": "df84b19aed31b75db34926fe2bc7d21e"
+      },
+      {
+        "filename": "Exchange Notice - Rulebook Update Fractional Contracts (2026.05.19).pdf",
+        "size": 1246858,
+        "lastModified": "2026-05-19T18:15:44.000Z",
+        "eTag": "b1338b3383635d13bd9efda3f2604257"
+      },
+      {
+        "filename": "Exchange Notice - Rulebook Update RFQ (2026.07.22).pdf",
+        "size": 181662,
+        "lastModified": "2026-07-23T15:08:23.000Z",
+        "eTag": "e89fe7a3f90a88780b6667c3115dbb45"
+      },
+      {
+        "filename": "Exchange Notice - Standing Maintenance Window Change (2026.07.28).pdf",
+        "size": 98452,
+        "lastModified": "2026-07-28T16:29:47.000Z",
+        "eTag": "89a878926da7c85b00dce11a0b18e8f6"
+      },
+      {
+        "filename": "Exchange Notice - Standing Maintenance Window Extension (2026.08.26).pdf",
+        "size": 127963,
+        "lastModified": "2026-08-26T20:07:12.000Z",
+        "eTag": "3a8a06db09f51aa96b1d0c01071bf796"
+      },
+      {
+        "filename": "Exchange Notice - TKLC Amendment (2026.09.29).pdf",
+        "size": 185750,
+        "lastModified": "2026-10-01T13:45:40.000Z",
+        "eTag": "ea75febcd9929c5ddc4fc5c6c1d15e2c"
+      },
+      {
+        "filename": "Exchange Notice - Technical Issue (2026.06.08).pdf",
+        "size": 96788,
+        "lastModified": "2026-06-08T21:23:19.000Z",
+        "eTag": "ca8d68d3ab1513e49488908c02f06093"
+      },
+      {
+        "filename": "Exchange Notice - Technical Issue (2026.06.09).pdf",
+        "size": 128181,
+        "lastModified": "2026-06-12T14:36:41.000Z",
+        "eTag": "35d20ee6968dd8773f3496f4d603a511"
+      },
+      {
+        "filename": "Exchange Notice - Technical Issue (2026.06.11).pdf",
+        "size": 129976,
+        "lastModified": "2026-06-15T18:49:56.000Z",
+        "eTag": "047e954a3df5b74d31962f08d809d651"
+      },
+      {
+        "filename": "Exchange Notice - Technical Issue (2026.06.13).pdf",
+        "size": 121202,
+        "lastModified": "2026-06-15T18:49:56.000Z",
+        "eTag": "c885bbd533ee67d7b0a8ac4af889394f"
+      },
+      {
+        "filename": "Exchange Notice - Technical Issue (2026.06.15).pdf",
+        "size": 130559,
+        "lastModified": "2026-06-17T16:44:29.000Z",
+        "eTag": "34a7aa2471ec05fdc3d7347d131a3a94"
+      },
+      {
+        "filename": "Exchange Notice - Technical Issue (2026.08.27).pdf",
+        "size": 128320,
+        "lastModified": "2026-08-28T13:40:38.000Z",
+        "eTag": "6edda52447348a590cba7ebd568d377d"
+      },
+      {
+        "filename": "Exchange Notice - Technical Issue (2026.09.05).pdf",
+        "size": 130989,
+        "lastModified": "2026-09-08T14:18:04.000Z",
+        "eTag": "c832abf15683c47597f4144d523db435"
+      },
+      {
+        "filename": "Exchange Notice - Weekly Notification (2026.09.21).pdf",
+        "size": 132118,
+        "lastModified": "2026-09-22T14:19:04.000Z",
+        "eTag": "9f2798ea49e5ad2fbfd8c2a0ad26f221"
+      },
+      {
+        "filename": "Exchange Notice - Weekly Notification of Fee Schedule Change (2026.09.29).pdf",
+        "size": 128284,
+        "lastModified": "2026-10-01T13:45:39.000Z",
+        "eTag": "023e99c58cc90de25820db741b173536"
+      },
+      {
+        "filename": "Exchange Notice - Weekly Notification of Fee Schedule Change (2026.10.12).pdf",
+        "size": 122183,
+        "lastModified": "2026-10-12T17:05:12.000Z",
+        "eTag": "adddeb4d9b40cd2009cf81eb5ac459bd"
+      },
+      {
+        "filename": "Exchange Notice - Weekly Notification of Fee Schedule Change (2026.10.13).pdf",
+        "size": 174008,
+        "lastModified": "2026-10-22T17:42:00.000Z",
+        "eTag": "eedd4f42846382f218c092b2d84dcbb3"
+      },
+      {
+        "filename": "Exchange Notice - Weekly Notification of Fee Schedule Change (2026.11.10).pdf",
+        "size": 139207,
+        "lastModified": "2026-11-10T20:31:55.000Z",
+        "eTag": "6fb91057b087c2d235b29f25cd1989f0"
+      },
+      {
+        "filename": "Exchange Notice - Weekly Notification of Rule Change (2026.06.26).pdf",
+        "size": 243741,
+        "lastModified": "2026-06-29T18:51:05.000Z",
+        "eTag": "925266f2b0958bf8753f30202018761b"
+      },
+      {
+        "filename": "Exchange Notice - Weekly Notification of Rule Change (2026.07.07).pdf",
+        "size": 129579,
+        "lastModified": "2026-07-07T16:30:25.000Z",
+        "eTag": "40a451637aeeaba9a01bbff21cd7b44a"
+      },
+      {
+        "filename": "Exchange Notice - Weekly Notification of Rule Change (2026.08.28).pdf",
+        "size": 124625,
+        "lastModified": "2026-08-31T18:59:17.000Z",
+        "eTag": "8033a723a40248a006e91afe7c13f4e0"
+      },
+      {
+        "filename": "Fee Rebate Program (2026.05.01).pdf",
+        "size": 393047,
+        "lastModified": "2026-05-04T20:42:42.000Z",
+        "eTag": "a7d562c004ce2ef3db3a0a359dc93523"
+      },
+      {
+        "filename": "Fee Schedule (2026.01.08).pdf",
+        "size": 106094,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "68dbebe9d2783d7c8243a49939824b87"
+      },
+      {
+        "filename": "Liquidity Provider Program (2026.03.03).pdf",
+        "size": 394426,
+        "lastModified": "2026-03-04T17:15:55.000Z",
+        "eTag": "eba7be93ee83ccb4a76be19a3ae6ed6a"
+      },
+      {
+        "filename": "Liquidity Provider Program Expiry (2026.05.08).pdf",
+        "size": 360951,
+        "lastModified": "2026-05-11T13:21:08.000Z",
+        "eTag": "8c00d4144cc0047d9be12a9ac6b8be34"
+      },
+      {
+        "filename": "Maintenance Window Notice (2026.02.12).pdf",
+        "size": 148776,
+        "lastModified": "2026-02-12T19:24:56.000Z",
+        "eTag": "85954dc505672dbc5e159d86fa93207d"
+      },
+      {
+        "filename": "Maintenance Window Notice (2026.02.24).pdf",
+        "size": 148956,
+        "lastModified": "2026-02-22T20:31:17.000Z",
+        "eTag": "187282c179f03c65ece482eb73d2eefd"
+      },
+      {
+        "filename": "Maintenance Window Notice (2026.02.26).pdf",
+        "size": 148922,
+        "lastModified": "2026-02-25T20:31:55.000Z",
+        "eTag": "1941c615b8c4122924c4b9b5671e4a2f"
+      },
+      {
+        "filename": "Maintenance Window Notice (2026.03.12).pdf",
+        "size": 149179,
+        "lastModified": "2026-03-10T17:06:14.000Z",
+        "eTag": "7e139e309e9f79141842aca530a0571c"
+      },
+      {
+        "filename": "Maintenance Window Notice (2026.03.19).pdf",
+        "size": 149542,
+        "lastModified": "2026-03-18T20:35:49.000Z",
+        "eTag": "6a936afb663e5401ed17956d57edbbbb"
+      },
+      {
+        "filename": "Maker Rebate (2026.03.02).pdf",
+        "size": 116800,
+        "lastModified": "2026-03-03T16:25:10.000Z",
+        "eTag": "d0da38e6b08fc299d41b26e3bd69500e"
+      },
+      {
+        "filename": "Maker Rebate and Taker Fee Increase (2026.03.06).pdf",
+        "size": 222041,
+        "lastModified": "2026-03-10T13:42:54.000Z",
+        "eTag": "6241018a0b791753f743920a490bc154"
+      },
+      {
+        "filename": "Market Halt (2026.01.19).pdf",
+        "size": 26606,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "bc44c9707f7a31458a310e507d71b702"
+      },
+      {
+        "filename": "Market Incentive Program (2026.03.05).pdf",
+        "size": 410379,
+        "lastModified": "2026-03-05T21:51:34.000Z",
+        "eTag": "f8a58e6876ebc0b1fa5a76f38da59bba"
+      },
+      {
+        "filename": "Market Liquidity Incentive Program (2026.03.17).pdf",
+        "size": 279163,
+        "lastModified": "2026-03-18T06:38:01.000Z",
+        "eTag": "8c4167289d61fa4eea0a4af84264f58e"
+      },
+      {
+        "filename": "Market Maker Program (2026.01.12).pdf",
+        "size": 339720,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "b3d9f5c288ebef06e7f4aad831c70650"
+      },
+      {
+        "filename": "Market Maker Program (2026.03.02).pdf",
+        "size": 398631,
+        "lastModified": "2026-03-03T16:25:10.000Z",
+        "eTag": "d6ae62cd93893f377812f7c95a04cfcc"
+      },
+      {
+        "filename": "Market Maker Program Expiry (2026.05.08).pdf",
+        "size": 358950,
+        "lastModified": "2026-05-11T13:21:08.000Z",
+        "eTag": "ac1423f10bbb8ac51c269ae4bb0f193f"
+      },
+      {
+        "filename": "Market Volume Incentive Program (2026.03.17).pdf",
+        "size": 275767,
+        "lastModified": "2026-03-18T06:38:01.000Z",
+        "eTag": "163334cda808888b12c1b8305b173635"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.1 (2025.08.12).pdf",
+        "size": 1012402,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "304909cad9685ed5c03c0bd5fcdd9329"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.10 (2025.09.11).pdf",
+        "size": 102843,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "3166e50cb433a90a4f8ef4c367e42162"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.11 (2025.11.25).pdf",
+        "size": 131574,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "4b930cffe03628e45a6982a4b4a3c3d2"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.12 (2025.11.25).pdf",
+        "size": 252768,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "4995fbf8a9791c91ac4f646b3e1e8b61"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.13 (2025.12.23).pdf",
+        "size": 155856,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "581fa0a0f66109b09782061e4dadef6e"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.14 (2025.12.23).pdf",
+        "size": 136476,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "5dc30d71db2f66b417c3351aa1ed6f00"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.15 (2025.12.30).pdf",
+        "size": 111140,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "cef657f64586d413bbc63bbf77969be1"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.2 (2025.08.12).pdf",
+        "size": 535154,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "493abae9d95b43f6bc12bc38f2650198"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.3 (2025.08.12).pdf",
+        "size": 241553,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "b566238cbe6bf5354c8492d41079e58d"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.4 (2025.08.12).pdf",
+        "size": 248320,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "dbde804a9814bd257c6f3ad0c3e20e0d"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.5 (2025.08.12).pdf",
+        "size": 401968,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "fa6106a9a0e51a2d49523422ca7df07f"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.6 (2025.08.21).pdf",
+        "size": 411467,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "1c097cdba4537fa7d9e801f5960f6c23"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.6 (2025.08.28).pdf",
+        "size": 411686,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "7f96ceaa479dd434135da119f0fb0e4c"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.7 (2025.09.09).pdf",
+        "size": 94614,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "3b1d9a6fb38750a9a46740e90e5d8c47"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.8 (2025.09.09).pdf",
+        "size": 100044,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "cecdb58fdb8234bca72591835d2653de"
+      },
+      {
+        "filename": "QCX LLC 40.6(a) Rule Submission PMX.2025.9 (2025.09.11).pdf",
+        "size": 118416,
+        "lastModified": "2026-02-06T15:42:20.000Z",
+        "eTag": "94322e068b617ea21427416c0eecc2be"
+      },
+      {
+        "filename": "Rulebook Update (2026.03.20).pdf",
+        "size": 879489,
+        "lastModified": "2026-04-28T16:14:34.000Z",
+        "eTag": "e5a4a9af528b6c067ad310e0092ad0bb"
+      },
+      {
+        "filename": "Specialized Liquidity Provider Program (2026.03.18).pdf",
+        "size": 340112,
+        "lastModified": "2026-03-18T22:30:31.000Z",
+        "eTag": "5cd4dd7cc24c42ed7b8b9b48f0cc89df"
+      },
+      {
+        "filename": "Standing Maintenance Window Change Notice (2026.04.10).pdf",
+        "size": 131885,
+        "lastModified": "2026-04-21T15:15:04.000Z",
+        "eTag": "3f46335904e7c323bf113e3fe58c9b56"
+      }
+    ]
+  }
+}

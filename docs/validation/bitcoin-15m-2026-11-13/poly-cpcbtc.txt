@@ -1,0 +1,149 @@
+QCX LLC d/b/a Polymarket US
+VIA CFTC PORTAL
+Mr. Christopher J. Kirkpatrick
+Office of the Secretariat
+Commodity Futures Trading Commission
+Three Lafayette Centre
+1155 21st Street NW
+Washington, DC 20581
+Re: QCX LLC – CFTC Regulation 40.6 Notification of Amendment to Product Self-Certification for Bitcoin Price Contracts
+(CPCBTCD)
+Dear Mr. Kirkpatrick:
+QCX LLC d/b/a Polymarket (“Polymarket US” or the “Exchange”), a designated contract market (“DCM”) registered with the
+Commodity Futures Trading Commission (“Commission” or “CFTC”), hereby amends, pursuant to 17 C.F.R. § 40.6, the listing of the
+products identified in the required submission materials (each, a “Product”). The Exchange intends to list the Products no earlier than
+September 29, 2026.
+I. Required Submission Materials (enclosed)
+Consistent with 17 C.F.R. § 40.6, the Exchange submits: (i) the text of the Products’ amended terms and conditions as attachment A;
+and (ii) a concise explanation and analysis demonstrating that the Products comply with the Commodity Exchange Act (“CEA”), as
+amended, applicable DCM Core Principles, and Commission regulations and policies thereunder, which is segregated as attachment B, for
+which the Exchange seeks confidential treatment pursuant to 17 C.F.R. § 145.9. The concise explanation and analysis either includes, or
+cites to, the supporting data and documentation relied upon.
+Summary of Amendments: Clarifying the Terms and Conditions of the Contracts as well as the Explanation and Analysis, including
+clarification on source agencies, payout criterion, and settlement procedures
+II. Certification
+The Exchange hereby certifies to the CFTC, pursuant to the procedures set forth in 17 C.F.R. § 40.6, that the attached submission
+complies with the CEA and the regulations promulgated thereunder. Further, the Exchange is not aware of any substantive opposing views
+expressed regarding the Products. The Exchange additionally certifies that, simultaneously with this filing, a copy of this submission was
+published on the Exchange’s website, accessible at www.polymarketexchange.com. Please contact me using the information below if you
+have any questions regarding this notice.
+Attachments:
+• Attachment A: Contract Terms & Conditions Clean and Redline
+• Attachment B: Explanation & Analysis of the Products (CONFIDENTIAL) Clean and Redline
+Nick Rice
+Head of Markets
+QCX LLC
+September 15, 2026
+nick.rice@qcex.com
+Attachment A: Terms & Conditions
+BITCOIN PRICE CONTRACTS (CPCBTC)
+Product Name: Will the value of {continuous-data} be {condition} {value} {period}?
+Category: Cryptocurrency
+Type: Event Contract
+Capitalized terms used, but not defined herein, have the meanings ascribed to them in the QCX LLC d/b/a Polymarket US (the
+“Exchange” or “PMUS”) Rulebook. “Contract Terms” means the specific parameters applicable to each Contract available for
+trading on the Exchange.
+Size: Each Contract has a notional size of $1.00.
+Minimum Tick: The Minimum Tick size for the Contract will not be less than $0.001, and not be greater than $0.01.
+Position Accountability Level: The Position Accountability Level will be $25,000 of notional exposure.
+Position Limits: No position limits apply.
+Margin: Margin is 100% of the at-risk amount.
+Issuance: Contracts may be listed by the Exchange at any time. Contract iterations will be issued on an as-needed basis at the
+discretion of the Exchange.
+Settlement Amount: The Settlement Amount is $1.00 per Contract, payable in accordance with the Payout Condition.
+Expiration Value: The Expiration Value is the value of the Underlying as documented by the designated Source at Expiration.
+Underlying
+The Underlying for each Contract is the value of {continuous-data} for {period}. Any instructional examples set forth in these
+Terms & Conditions (the “Product Specifications”) or in the Contract Terms are provided for convenience only, are non-
+exhaustive, and are not intended to limit the scope of the applicable definitions or criteria.
+Parameters
+• {continuous-data}: The price of bitcoin, expressed in U.S. dollars, as disseminated by the Primary Source through its
+Bitcoin Real Time Index feed (BRTI).
+• {condition}: The comparison operator with which the reported value is compared relative to {value}. Possible
+conditions include “above” (strictly greater than), “below” (strictly less than), “at least” (greater than or equal to), “at
+most” (less than or equal to), “between” (greater than or equal to a specified lower bound and less than or equal to a
+specified upper bound), or “exactly” (equal to). If the observed value falls exactly on the boundary between two ranges,
+the Contract will settle in favor of the range for which that value is the inclusive lower boundary.
+• {value}: A numerical value or range, expressed in the units utilized by {continuous-data}.
+• {period}: The specified date, date and time, or time period for which the value of {continuous-data} is measured. The
+period will be one of the following, and no other: 5-minute, 15-minute, 30-minute, 1-hour, 4-hour, daily, weekly,
+monthly, quarterly, or annual, as specified in the Contract Terms.
+Sources
+The Exchange will serve as the Source Agency for all Contracts. In determining the Contract Outcome for each Contract, the
+Exchange will reference the following source hierarchy (collectively, the “Sources”):
+• Primary Source: CF Benchmarks Ltd.
+The Exchange may designate additional or substitute Sources. All instructions on how to access the Underlying data via the
+designated Source will be made available to market participants. The Source hierarchy is designed to produce reliable, publicly
+verifiable settlement data that is resistant to manipulation or premature disclosure. QCX LLC d/b/a Polymarket US is not
+affiliated with, and has no ownership interest in or control over, any of the Sources enumerated herein.
+Expiration Date and Time
+Unless otherwise provided in the Payout Condition, the Expiration Date will be the earlier of: (i) the day of the release of the
+qualifying data by the designated Source; or (ii) 7 days after the end of {period}. The Expiration Time will be 11:59:59 PM ET
+on the Expiration Date, or such other time as specified in the Contract Terms. As provided for by 10.3 and 10.4 of the Rulebook,
+if any circumstances arise that would prevent a Contract’s value from being determined accurately at the Expiration Date,
+including but not limited to delayed data from a relevant source, the Exchange may adjust the Expiration Date.
+Last Trading Date and Time
+The Last Trading Date and Time will be the same as the Expiration Date and Time, unless otherwise specified in the Contract
+Terms, or unless the Contract Outcome Review Process (Rule 10.4 of the Rulebook) is initiated.
+Settlement Date and Time
+The Settlement Date and Time will be no later than the day after the Expiration Date, unless otherwise specified in the Contract
+Terms, or unless the Contract Outcome Review Process is initiated.
+Payout Condition
+Contracts pay out if the Payout Condition is met. The Payout Condition for the Contract is met if the value of {continuous-data}
+is {condition} {value} {period}. The Payout Condition is evaluated as follows:
+• Settlement Method: Prices are determined by the designated Source using the settlement method specified in the
+Contract Terms. Revisions to the Expiration Value disseminated after Expiration will not be considered in determining
+the Contract Outcome, except as provided in the Data Source Error provision of the Payout Condition. Unless
+otherwise specified in the Contract Terms, the following methods apply:
+• For Contracts referring to the maximum or minimum value reached by {continuous-data} during {period},
+the Payout Condition is evaluated using a trimmed mean calculation. The measurement period runs from the
+later of the listing of the Contract or the start of {period}, until the end of {period}. At the end of each second
+during the measurement period, a value is calculated using the prices of {continuous-data} disseminated by
+the designated feed during the preceding sixty (60) seconds, including any prices disseminated before the
+start of the measurement period. For each such calculation, the top 20% and bottom 20% of values are
+removed, and the mean of the remaining values is calculated. The Payout Condition is met if this trimmed
+mean for any single trailing sixty-second period during the measurement period is {condition} {value};
+{condition} will be an upside comparator (“above” or “at least”) for Contracts referring to the maximum
+value reached, and a downside comparator (“below” or “at most”) for Contracts referring to the minimum
+value reached.
+• For Contracts referring to the value of {continuous-data} at a specified date and time, the Expiration Value is
+the simple average of the prices disseminated by the designated feed during the sixty (60) seconds
+immediately preceding the specified date and time.
+• Precision: The Payout Condition is evaluated using the level of precision utilized to report the relevant data by the
+designated Source, including any units, rounding, or truncation.
+• Data Source Error: If the Source publishes an otherwise-qualifying Expiration Value that is clearly erroneous and the
+result of technical or operational error, or unauthorized interference with the Source or its data, the Exchange may
+postpone settlement for a period of up to seven (7) calendar days in anticipation of a corrected Expiration Value. If a
+corrected Expiration Value is made available within that period, the Exchange will use the corrected value to determine
+the Contract Outcome. If no corrected Expiration Value is made available within that period, the Exchange may use the
+original value to determine the Contract Outcome, or initiate the Contract Outcome Review Process.
+• Data Unavailability: If the Source’s data is unavailable or incomplete such that the Contract Outcome cannot be
+conclusively determined for {period} at the end of {period}:
+• For Contracts referring to the value of {continuous-data} at a specified date and time, the Exchange will
+settle Contracts according to the first qualifying Expiration Value determinable under the relevant settlement
+method by Expiration, with the Payout Condition not being met if no such Expiration Value is determinable
+by Expiration.
+• For Contracts referring to the maximum or minimum value reached by {continuous-data} during {period},
+the Payout Condition will be evaluated in accordance with the relevant settlement method using all qualifying
+data for the measurement period disseminated by Expiration, with the Payout Condition not being met if its
+satisfaction cannot be conclusively determined based on data available by Expiration.
+• Final Settlements: Once an outcome has been determined by the Exchange in accordance with the objective criteria
+set forth herein, such determination will be final and will not be subject to appeal or revision for purposes of settlement.
+In the event of a dispute as to whether the Payout Condition has been met, the Exchange will resolve such dispute in accordance
+with the procedures set forth in the PMUS Rulebook.
+Eligibility
+In addition to the Source Prohibition, and the general prohibition against trading on material nonpublic information in violation
+of a pre-existing duty, the Exchange will institute additional prohibitions for trading the Contract. Persons under 18 years of age
+are not permitted to create Polymarket US accounts. The following individuals will be prohibited from trading:
+• Current and former employees, officers, directors, contractors, and consultants of the Source with access to the data
+used to settle the Contract prior to its publication;
+• Participants in any pre-release lock-up, embargo, or advance-access arrangement for the data used to settle the
+Contract;
+• Ultimate beneficial owners of entities with advance access to, or the ability to influence, the Contract or the data used
+to determine it; and
+• Household members and immediate family of all of the above.
+Modifications
+Before Settlement, the Exchange may initiate the Contract Outcome Review Process. If any event or any circumstance which
+may have a material impact on the reliability or transparency of a Contract’s Sources or the Underlying related to the Contract
+arises, the Exchange retains the authority to designate a new Source and Underlying for that Contract and to change any
+associated Payout Condition and Contract Terms after the first day of trading.

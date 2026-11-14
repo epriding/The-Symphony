@@ -1,0 +1,24 @@
+{
+  "files": [
+    {
+      "path": "kalshi-book.json",
+      "sha256": "e998d50280046426103122b933e0708598bae867417b16ad5230aceb248bd7db"
+    },
+    {
+      "path": "kalshi-market.json",
+      "sha256": "b9210444932de58f6f387ce6092988ff369a8e357858d722671b741530911954"
+    },
+    {
+      "path": "poly-book.json",
+      "sha256": "b59a985356fd3093706c4a80f2a311179218993b91faf45dea9ee529c3caf4cf"
+    },
+    {
+      "path": "poly-market.json",
+      "sha256": "6d02a60c243ceee4e13e43b75c2669595498fdfa3619640c88fa016f9442b3f4"
+    },
+    {
+      "path": "quote-diagnostic.json",
+      "sha256": "9c52c27940419f57894a2674d0257dd6ae0135aba2a5c7bcefd4e4d5ce723c85"
+    }
+  ]
+}

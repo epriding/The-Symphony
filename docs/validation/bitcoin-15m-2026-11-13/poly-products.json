@@ -1,0 +1,1228 @@
+{
+  "url": "https://www.polymarketexchange.com/files/products",
+  "started_at": "2026-11-13T06:28:23.209142+00:00",
+  "received_at": "2026-11-13T06:28:25.430978+00:00",
+  "http_status": 200,
+  "headers": {
+    "Date": "Fri, 13 Nov 2026 06:28:25 GMT",
+    "Content-Type": "application/json",
+    "Cache-Control": "public, max-age=300"
+  },
+  "sha256": "f7a7867814236605de63e7863a1c2a20bf28fc90630461d64307b4439d63c916",
+  "body": {
+    "files": [
+      {
+        "filename": "PMUS - AAAGASPC - (2026.08.07).pdf",
+        "size": 411260,
+        "lastModified": "2026-08-07T09:42:56.000Z",
+        "eTag": "470e7644ed3137d37f26c8f3a5064a6c"
+      },
+      {
+        "filename": "PMUS - AACHC - (2026.06.01).pdf",
+        "size": 451910,
+        "lastModified": "2026-06-02T22:05:59.000Z",
+        "eTag": "6bceeb1875624c06bc2ebccb2db596be"
+      },
+      {
+        "filename": "PMUS - AADC - (2026.07.01).pdf",
+        "size": 117472,
+        "lastModified": "2026-10-26T21:38:08.000Z",
+        "eTag": "d94c6a36221e2d9feb3657a132fea1cf"
+      },
+      {
+        "filename": "PMUS - AADCBB - (2026.06.30).pdf",
+        "size": 117860,
+        "lastModified": "2026-07-06T21:45:38.000Z",
+        "eTag": "33f0a726695544cddca12560563be049"
+      },
+      {
+        "filename": "PMUS - AADCBK - (2026.06.30).pdf",
+        "size": 118601,
+        "lastModified": "2026-07-06T21:45:38.000Z",
+        "eTag": "ee93f7273654852550ea703a6466fe40"
+      },
+      {
+        "filename": "PMUS - AADCC - (2026.06.30).pdf",
+        "size": 117858,
+        "lastModified": "2026-07-06T21:45:38.000Z",
+        "eTag": "d063b27fa226c32c17cbb46348e8829a"
+      },
+      {
+        "filename": "PMUS - AADCCO - (2026.06.30).pdf",
+        "size": 117807,
+        "lastModified": "2026-07-06T21:45:38.000Z",
+        "eTag": "6bd941668329ce8a1935ae2d15c2ddbb"
+      },
+      {
+        "filename": "PMUS - AADCH - (2026.06.30).pdf",
+        "size": 118396,
+        "lastModified": "2026-07-06T21:45:38.000Z",
+        "eTag": "8440601143d52b113e4271020f7b71a8"
+      },
+      {
+        "filename": "PMUS - AADCT - (2026.06.30).pdf",
+        "size": 117462,
+        "lastModified": "2026-07-06T21:45:38.000Z",
+        "eTag": "23d433faec75a5d7ccd96101e2656139"
+      },
+      {
+        "filename": "PMUS - AAHCSB - (2026.09.29).pdf",
+        "size": 394813,
+        "lastModified": "2026-10-01T13:45:40.000Z",
+        "eTag": "29259b9272b8983c3ae4e70716e41c78"
+      },
+      {
+        "filename": "PMUS - AASRC - (2026.09.11).pdf",
+        "size": 382951,
+        "lastModified": "2026-09-13T21:09:44.000Z",
+        "eTag": "ae2171098c1394df636af103ca24c421"
+      },
+      {
+        "filename": "PMUS - ADPC - (2026.06.22).pdf",
+        "size": 118560,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "6743399243d386ed34426b6c7568c072"
+      },
+      {
+        "filename": "PMUS - ADPEC - (2026.08.26).pdf",
+        "size": 382974,
+        "lastModified": "2026-08-26T20:07:12.000Z",
+        "eTag": "1ff2519c354e7462a0c6b19ab65698ed"
+      },
+      {
+        "filename": "PMUS - ADWSC - (2026.06.08).pdf",
+        "size": 228454,
+        "lastModified": "2026-06-10T15:47:17.000Z",
+        "eTag": "c796b291ba815318e1c52e775c3df6f0"
+      },
+      {
+        "filename": "PMUS - AEC - (2026.03.26).pdf",
+        "size": 229304,
+        "lastModified": "2026-05-11T19:31:05.000Z",
+        "eTag": "bbe2ba54c9b1b87809f4bbfaebd020ec"
+      },
+      {
+        "filename": "PMUS - AFRC - (2026.06.22).pdf",
+        "size": 200408,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "93a2606609e9e3d0e4dfd0df082dabad"
+      },
+      {
+        "filename": "PMUS - AIMC - (2026.06.22).pdf",
+        "size": 194792,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "9817fc43f2ce7638960b722094bac824"
+      },
+      {
+        "filename": "PMUS - AIMRC - (2026.06.30).pdf",
+        "size": 116482,
+        "lastModified": "2026-07-06T21:45:38.000Z",
+        "eTag": "6c37c31de37098d28ec98ac02e5bdc67"
+      },
+      {
+        "filename": "PMUS - ALRDC - (2026.06.15).pdf",
+        "size": 185352,
+        "lastModified": "2026-06-17T09:50:24.000Z",
+        "eTag": "d7f42c4c0d4d1fafb1fa05c423ce519c"
+      },
+      {
+        "filename": "PMUS - APDC - (2026.06.30).pdf",
+        "size": 194048,
+        "lastModified": "2026-07-31T10:41:30.000Z",
+        "eTag": "fddb44d9a5b65200975d470cb2998a0b"
+      },
+      {
+        "filename": "PMUS - APPC - (2026.08.20).pdf",
+        "size": 399436,
+        "lastModified": "2026-08-20T20:57:54.000Z",
+        "eTag": "34b9316be0312941ec44f459232d2529"
+      },
+      {
+        "filename": "PMUS - AQC - (2026.03.26).pdf",
+        "size": 227132,
+        "lastModified": "2026-05-11T19:31:05.000Z",
+        "eTag": "46b52f1b21f40ffac4f5d1cfe4c87447"
+      },
+      {
+        "filename": "PMUS - ARANKC - (2026.06.22).pdf",
+        "size": 119748,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "a2841911afab0e7d795a774267e1665f"
+      },
+      {
+        "filename": "PMUS - ARCBB - (2026.06.26).pdf",
+        "size": 211135,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "b198512f01b1c9d0c6e96f6ce1b79f1c"
+      },
+      {
+        "filename": "PMUS - ARCBK - (2026.06.26).pdf",
+        "size": 212548,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "7ac4897b433080c78584afc87fda3ecc"
+      },
+      {
+        "filename": "PMUS - ARCCO - (2026.06.26).pdf",
+        "size": 211330,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "ee176f9552a2b36429d0bcfb655c64bd"
+      },
+      {
+        "filename": "PMUS - ARCF - (2026.06.26).pdf",
+        "size": 211739,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "48748e111b36f6479b3f1d4e063d1e77"
+      },
+      {
+        "filename": "PMUS - ARCG - (2026.06.26).pdf",
+        "size": 211924,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "f9356587ece540fd5f14fba5a91841de"
+      },
+      {
+        "filename": "PMUS - ARCIH - (2026.06.26).pdf",
+        "size": 212467,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "0c30799e1ac7f979554da9b4f48530e5"
+      },
+      {
+        "filename": "PMUS - ARCM - (2026.06.26).pdf",
+        "size": 211430,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "0104c347e7a2cfedb39e28d4f01afbfd"
+      },
+      {
+        "filename": "PMUS - ARCS - (2026.06.26).pdf",
+        "size": 210974,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "f33ea96147b410a15537b724d9397c6a"
+      },
+      {
+        "filename": "PMUS - ARCT - (2026.06.26).pdf",
+        "size": 210619,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "2a44d4f96aa83c7ce9bd318dc4953491"
+      },
+      {
+        "filename": "PMUS - ASC - (2026.03.26).pdf",
+        "size": 219945,
+        "lastModified": "2026-05-11T19:31:05.000Z",
+        "eTag": "9998ebe6ee7d28805c2acea9fa302453"
+      },
+      {
+        "filename": "PMUS - ASTATC - (2026.03.31).pdf",
+        "size": 231838,
+        "lastModified": "2026-04-01T13:26:45.000Z",
+        "eTag": "b01bdb24634e4ea4374279d13b0c0f30"
+      },
+      {
+        "filename": "PMUS - ATC - (2026.03.26).pdf",
+        "size": 217811,
+        "lastModified": "2026-05-11T19:31:05.000Z",
+        "eTag": "6dd99ea7596f3dd44222b89d46f1d341"
+      },
+      {
+        "filename": "PMUS - BBRC - (2026.09.11).pdf",
+        "size": 385460,
+        "lastModified": "2026-09-13T21:09:44.000Z",
+        "eTag": "569a53fa385349117e941315c0d5edfe"
+      },
+      {
+        "filename": "PMUS - BPCHC - (2026.07.07).pdf",
+        "size": 180498,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "2067a3903a574de460df95281bfe6e56"
+      },
+      {
+        "filename": "PMUS - CAEC - (2026.06.16).pdf",
+        "size": 180386,
+        "lastModified": "2026-06-22T14:51:19.000Z",
+        "eTag": "5a9cc0dde5f2e527a3e4e0ed6c2b2bfa"
+      },
+      {
+        "filename": "PMUS - CAOC - (2026.09.22).pdf",
+        "size": 180893,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "81ad92548100c12e25f600670edfe35b"
+      },
+      {
+        "filename": "PMUS - CBPAC - (2026.07.01).pdf",
+        "size": 185687,
+        "lastModified": "2026-07-06T21:45:38.000Z",
+        "eTag": "f51db954306672b967d15bd33aa2601d"
+      },
+      {
+        "filename": "PMUS - CCDOC - (2026.07.07).pdf",
+        "size": 192578,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "77a8028b7447edd62839b80eb431e7ae"
+      },
+      {
+        "filename": "PMUS - CCPC - (2026.06.08).pdf",
+        "size": 234676,
+        "lastModified": "2026-06-08T21:37:48.000Z",
+        "eTag": "6f5c8df4c87945d38aeb0c6911b1066f"
+      },
+      {
+        "filename": "PMUS - CCRC - (2026.04.03).pdf",
+        "size": 210237,
+        "lastModified": "2026-04-07T17:08:13.000Z",
+        "eTag": "f332f1de398854c3f354519b7bd4bebe"
+      },
+      {
+        "filename": "PMUS - CCRYOC - (2026.09.22).pdf",
+        "size": 361865,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "58e3f8e8fefa50d9d23a8e34c3945e38"
+      },
+      {
+        "filename": "PMUS - CFDVC - (2026.04.03).pdf",
+        "size": 196210,
+        "lastModified": "2026-04-06T17:25:46.000Z",
+        "eTag": "d36eb4102cfa017dedb3ffe27f57aa83"
+      },
+      {
+        "filename": "PMUS - CMOVCUSG - (2026.09.14).pdf",
+        "size": 412691,
+        "lastModified": "2026-09-14T17:13:19.000Z",
+        "eTag": "1ecde674c00169c37c7cd6c24fd34dcd"
+      },
+      {
+        "filename": "PMUS - CMOVCUSH - (2026.09.14).pdf",
+        "size": 412860,
+        "lastModified": "2026-09-14T17:13:18.000Z",
+        "eTag": "61b3ec3b5f3cb1805c422c19fc7bfda5"
+      },
+      {
+        "filename": "PMUS - CMOVCUSS - (2026.09.14).pdf",
+        "size": 410930,
+        "lastModified": "2026-09-14T17:13:19.000Z",
+        "eTag": "a7b7644438c88b5c24f2f3a59e47edf3"
+      },
+      {
+        "filename": "PMUS - CPAG - (2026.10.16).pdf",
+        "size": 389547,
+        "lastModified": "2026-10-21T21:16:00.000Z",
+        "eTag": "a3c7d3d0594d419ff435a61e915015fb"
+      },
+      {
+        "filename": "PMUS - CPAGSP - (2026.10.16).pdf",
+        "size": 389217,
+        "lastModified": "2026-10-21T21:16:00.000Z",
+        "eTag": "0acb267f4aa5a594b3c92912bffae8b2"
+      },
+      {
+        "filename": "PMUS - CPAU - (2026.10.16).pdf",
+        "size": 389146,
+        "lastModified": "2026-10-21T21:16:00.000Z",
+        "eTag": "dc2df75a78b845d588967c2566987918"
+      },
+      {
+        "filename": "PMUS - CPAUSP - (2026.10.16).pdf",
+        "size": 389069,
+        "lastModified": "2026-10-21T21:16:00.000Z",
+        "eTag": "e8c6efbcccd019b449634560188e0627"
+      },
+      {
+        "filename": "PMUS - CPC - (2026.07.14).pdf",
+        "size": 177602,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "c2dcbf1524dcbf8a0a768263f769af1b"
+      },
+      {
+        "filename": "PMUS - CPCBNB - (2026.10.05).pdf",
+        "size": 390981,
+        "lastModified": "2026-10-06T16:54:29.000Z",
+        "eTag": "3ce8567210796d811b270582e76b5766"
+      },
+      {
+        "filename": "PMUS - CPCBTC - (2026.09.15).pdf",
+        "size": 355738,
+        "lastModified": "2026-09-21T14:41:22.000Z",
+        "eTag": "b7372b68ba8cde659eefb8932dbff6d9"
+      },
+      {
+        "filename": "PMUS - CPCDOGE - (2026.10.05).pdf",
+        "size": 393426,
+        "lastModified": "2026-10-06T16:54:29.000Z",
+        "eTag": "949aab17ac7216452a6924f884d3b41e"
+      },
+      {
+        "filename": "PMUS - CPCETH - (2026.09.15).pdf",
+        "size": 356448,
+        "lastModified": "2026-09-21T14:41:22.000Z",
+        "eTag": "98385da52fc96ecbcc492d9ed9dec9d2"
+      },
+      {
+        "filename": "PMUS - CPCHYPE - (2026.10.05).pdf",
+        "size": 393780,
+        "lastModified": "2026-10-06T16:54:29.000Z",
+        "eTag": "add00a7b36709938f201ad742f8b496a"
+      },
+      {
+        "filename": "PMUS - CPCNEAR - (2026.10.05).pdf",
+        "size": 391433,
+        "lastModified": "2026-10-06T16:54:29.000Z",
+        "eTag": "543e0f806f8addd28a1eb697bc33bb47"
+      },
+      {
+        "filename": "PMUS - CPCSOL - (2026.09.15).pdf",
+        "size": 354773,
+        "lastModified": "2026-09-21T14:41:22.000Z",
+        "eTag": "9f64afa89d3386e581ae7832c2460ad0"
+      },
+      {
+        "filename": "PMUS - CPCXRP - (2026.10.05).pdf",
+        "size": 391096,
+        "lastModified": "2026-10-06T16:54:29.000Z",
+        "eTag": "6046e212ff0e1fb7d162ffaf66d6dee6"
+      },
+      {
+        "filename": "PMUS - CPCZEC - (2026.10.05).pdf",
+        "size": 392590,
+        "lastModified": "2026-10-06T16:54:29.000Z",
+        "eTag": "21090bbdae11cc7e1347174f091d873f"
+      },
+      {
+        "filename": "PMUS - CPIC - (2026.04.06).pdf",
+        "size": 206983,
+        "lastModified": "2026-06-22T14:51:19.000Z",
+        "eTag": "8b808f7a47131284a90fa0099f31a176"
+      },
+      {
+        "filename": "PMUS - CPIUC - (2026.10.06).pdf",
+        "size": 411391,
+        "lastModified": "2026-10-07T03:37:07.000Z",
+        "eTag": "c2dc4830bd5ceec8309605f7ab273570"
+      },
+      {
+        "filename": "PMUS - CPOC - (2026.09.22).pdf",
+        "size": 363082,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "7ffcf2281602290016ea47fc4aacbb4f"
+      },
+      {
+        "filename": "PMUS - CRANC - (2026.07.01).pdf",
+        "size": 190272,
+        "lastModified": "2026-07-06T21:45:38.000Z",
+        "eTag": "7789af33ffa9d2c8a739ee9644a5882d"
+      },
+      {
+        "filename": "PMUS - CROSS - (2026.10.07).pdf",
+        "size": 383405,
+        "lastModified": "2026-10-07T18:37:34.000Z",
+        "eTag": "05cce4a82e6fbb1daaf5324d1347b035"
+      },
+      {
+        "filename": "PMUS - CSENTC - (2026.08.26).pdf",
+        "size": 381005,
+        "lastModified": "2026-08-26T20:07:12.000Z",
+        "eTag": "73cba33185ddc89fbfab6759eff9d78c"
+      },
+      {
+        "filename": "PMUS - CUSDC - (2026.10.06).pdf",
+        "size": 409202,
+        "lastModified": "2026-10-07T03:37:08.000Z",
+        "eTag": "d448f3daa0cc0b7d4e4b49afe80a56f6"
+      },
+      {
+        "filename": "PMUS - CWDC - (2026.06.08).pdf",
+        "size": 236978,
+        "lastModified": "2026-06-08T21:37:48.000Z",
+        "eTag": "b19e8d5fea27bff3a42158ccc74ec015"
+      },
+      {
+        "filename": "PMUS - DCCC - (2026.07.21).pdf",
+        "size": 114443,
+        "lastModified": "2026-07-23T20:15:53.000Z",
+        "eTag": "787427cd58f65b33438ca14f3b93d8f2"
+      },
+      {
+        "filename": "PMUS - DIPCC - (2026.07.01).pdf",
+        "size": 186879,
+        "lastModified": "2026-07-06T21:45:38.000Z",
+        "eTag": "63b68e1e7e25391fceb6a74620d1a9fa"
+      },
+      {
+        "filename": "PMUS - EGGPC - (2026.10.06).pdf",
+        "size": 408277,
+        "lastModified": "2026-10-07T03:37:07.000Z",
+        "eTag": "e8458488a17323bdd3576283837e4104"
+      },
+      {
+        "filename": "PMUS - ENDAC - (2026.07.14).pdf",
+        "size": 115790,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "07b725553d7f235b9255f3c403d78907"
+      },
+      {
+        "filename": "PMUS - ENWC - (2026.07.14).pdf",
+        "size": 178937,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "68397c54b2e813504f58f84d4f8cc95f"
+      },
+      {
+        "filename": "PMUS - ERAC - (2026.06.26).pdf",
+        "size": 231009,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "948edf9d7c83cb2b26f98659b1a52d9b"
+      },
+      {
+        "filename": "PMUS - EWC - (2026.07.01).pdf",
+        "size": 119451,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "7986a1dca362660929116a709113afa9"
+      },
+      {
+        "filename": "PMUS - EXSCBB - (2026.06.26).pdf",
+        "size": 235706,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "405a5f9eeb4702b695f9e47cda19678a"
+      },
+      {
+        "filename": "PMUS - EXSCBK - (2026.06.26).pdf",
+        "size": 236798,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "5c1c21690caf798b1542e592280d4a33"
+      },
+      {
+        "filename": "PMUS - EXSCC - (2026.06.26).pdf",
+        "size": 236112,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "4345a0f282f8d281c5278899e0539070"
+      },
+      {
+        "filename": "PMUS - EXSCCH - (2026.06.26).pdf",
+        "size": 236806,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "4b3b31fd567dcd89e2000114037a878c"
+      },
+      {
+        "filename": "PMUS - EXSCE - (2026.06.26).pdf",
+        "size": 235709,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "b790cf6a916cbdc80d0911d9033fc29d"
+      },
+      {
+        "filename": "PMUS - EXSCF - (2026.06.26).pdf",
+        "size": 236370,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "231950849196e40ff4088afd50ab8776"
+      },
+      {
+        "filename": "PMUS - EXSCG - (2026.06.26).pdf",
+        "size": 235960,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "e2bd0c969b96fbb0e3566f4a24f04934"
+      },
+      {
+        "filename": "PMUS - EXSCIH - (2026.06.26).pdf",
+        "size": 237522,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "977f2948531f4f23d8d78a0f0aaaa607"
+      },
+      {
+        "filename": "PMUS - EXSCS - (2026.06.26).pdf",
+        "size": 235242,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "3c4615ce99f1acb7c9466eaca94c36a5"
+      },
+      {
+        "filename": "PMUS - EXSCT - (2026.06.26).pdf",
+        "size": 235196,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "d3daa38931d8e2fdfa47f231103ead79"
+      },
+      {
+        "filename": "PMUS - EXSCTT - (2026.06.26).pdf",
+        "size": 235526,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "9d3ee0d7df064cff8c98e7aeb7de10c9"
+      },
+      {
+        "filename": "PMUS - EXSCV - (2026.06.26).pdf",
+        "size": 236234,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "cdab6dfb4faf3060d898ffdf76e8e232"
+      },
+      {
+        "filename": "PMUS - FADPC - (2026.07.21).pdf",
+        "size": 118250,
+        "lastModified": "2026-07-23T20:15:53.000Z",
+        "eTag": "6bbfc2d4759d5a5f512d60341fd6e304"
+      },
+      {
+        "filename": "PMUS - FIVYC - (2026.10.06).pdf",
+        "size": 407874,
+        "lastModified": "2026-10-07T03:37:08.000Z",
+        "eTag": "214df09e89081a4a6fe97ba69d000c41"
+      },
+      {
+        "filename": "PMUS - FPTC - (2026.07.21).pdf",
+        "size": 186990,
+        "lastModified": "2026-07-23T20:15:53.000Z",
+        "eTag": "9e8821891ac9653551c860507470bed2"
+      },
+      {
+        "filename": "PMUS - FREWCBR - (2026.09.22).pdf",
+        "size": 409563,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "f52f63d15059495aafd1abbdf134720c"
+      },
+      {
+        "filename": "PMUS - FREWCFR - (2026.09.22).pdf",
+        "size": 404413,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "3e31cdae6ebba41eb010deac167aeb1b"
+      },
+      {
+        "filename": "PMUS - FREWCUSG - (2026.09.22).pdf",
+        "size": 407839,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "af25772142468eefa3d28a657f620272"
+      },
+      {
+        "filename": "PMUS - FREWCUSH - (2026.09.22).pdf",
+        "size": 408751,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "5721fbc2b51baad782ae5555947e38f7"
+      },
+      {
+        "filename": "PMUS - FREWCUSS - (2026.09.22).pdf",
+        "size": 406528,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "3cdfa51ff6a0866ad0b713812c57be75"
+      },
+      {
+        "filename": "PMUS - FTSC - (2026.07.21).pdf",
+        "size": 114607,
+        "lastModified": "2026-07-23T20:15:53.000Z",
+        "eTag": "0c311c235adaa10d7e50bb46e802c967"
+      },
+      {
+        "filename": "PMUS - GBAPC - (2026.10.06).pdf",
+        "size": 409329,
+        "lastModified": "2026-10-07T03:37:08.000Z",
+        "eTag": "cf6980dbc20070536117941d2266512b"
+      },
+      {
+        "filename": "PMUS - GBTC - (2026.07.14).pdf",
+        "size": 115673,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "68ec9fe792905a9572991660b99429b8"
+      },
+      {
+        "filename": "PMUS - GDPC - (2026.04.06).pdf",
+        "size": 205494,
+        "lastModified": "2026-06-22T14:51:19.000Z",
+        "eTag": "e6adb3cfe08924ad65a209005dda6908"
+      },
+      {
+        "filename": "PMUS - GFRC - (2026.10.06).pdf",
+        "size": 406294,
+        "lastModified": "2026-10-07T03:37:08.000Z",
+        "eTag": "85e9c9c33a590e44ebf60900749475b4"
+      },
+      {
+        "filename": "PMUS - GSC - (2026.06.09).pdf",
+        "size": 226376,
+        "lastModified": "2026-06-10T15:47:17.000Z",
+        "eTag": "9c291008b251f6575baf2922cab0db9a"
+      },
+      {
+        "filename": "PMUS - GSLC - (2026.06.09).pdf",
+        "size": 188942,
+        "lastModified": "2026-06-11T16:56:11.000Z",
+        "eTag": "c466e20e75d73bea3bdf38bbda113f73"
+      },
+      {
+        "filename": "PMUS - GSRC - (2026.09.29).pdf",
+        "size": 389411,
+        "lastModified": "2026-10-01T13:45:39.000Z",
+        "eTag": "fbd6bf409275e0e36e6107793f87307f"
+      },
+      {
+        "filename": "PMUS - GTC - (2026.10.07).pdf",
+        "size": 414636,
+        "lastModified": "2026-10-07T18:37:34.000Z",
+        "eTag": "90eb2e37eb78e535e18d2f1405796521"
+      },
+      {
+        "filename": "PMUS - HUCMC - (2026.10.06).pdf",
+        "size": 404743,
+        "lastModified": "2026-10-07T03:37:08.000Z",
+        "eTag": "3f5d6a9d5e609eeabd47c80ec7dd864d"
+      },
+      {
+        "filename": "PMUS - IARC - (2026.07.21).pdf",
+        "size": 114723,
+        "lastModified": "2026-07-23T20:15:53.000Z",
+        "eTag": "ed536c193a91dbb8afd89a0f4599e985"
+      },
+      {
+        "filename": "PMUS - IPCC - (2026.06.08).pdf",
+        "size": 219544,
+        "lastModified": "2026-06-10T15:47:17.000Z",
+        "eTag": "6990f454d900eb61c5aa245160b56bbf"
+      },
+      {
+        "filename": "PMUS - IPOC - (2026.06.22).pdf",
+        "size": 195174,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "048d28903c4c4923e6eae8227207aab6"
+      },
+      {
+        "filename": "PMUS - KPIC - (2026.06.22).pdf",
+        "size": 194298,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "a5df006e30c2af67fa5aaade235ad68b"
+      },
+      {
+        "filename": "PMUS - LAWEC - (2026.07.01).pdf",
+        "size": 182047,
+        "lastModified": "2026-07-06T21:45:38.000Z",
+        "eTag": "529e36332bc9ff4f7297d5bc55359b49"
+      },
+      {
+        "filename": "PMUS - MLAEC - (2026.07.07).pdf",
+        "size": 191864,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "10a19cbfe5de3d934011f34945ac540e"
+      },
+      {
+        "filename": "PMUS - MOWC - (2026.07.07).pdf",
+        "size": 192470,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "cf578f0a3652362b4a3df1e21c27110d"
+      },
+      {
+        "filename": "PMUS - NCLPHC - (2026.10.20).pdf",
+        "size": 388856,
+        "lastModified": "2026-10-21T21:16:00.000Z",
+        "eTag": "04d2f2ccc6a19273c7fcd749df91b8ff"
+      },
+      {
+        "filename": "PMUS - NCPDC - (2026.08.25).pdf",
+        "size": 401404,
+        "lastModified": "2026-08-25T20:10:52.000Z",
+        "eTag": "3b49d99fec1b4161894c656c2a374fa8"
+      },
+      {
+        "filename": "PMUS - NFPC - (2026.04.03).pdf",
+        "size": 183498,
+        "lastModified": "2026-04-07T17:08:13.000Z",
+        "eTag": "fdc060f7ea1c443f2a4d66065568f794"
+      },
+      {
+        "filename": "PMUS - NIMC - (2026.10.06).pdf",
+        "size": 404545,
+        "lastModified": "2026-10-07T03:37:08.000Z",
+        "eTag": "25cb37cec553cab67fe47073604e4c2d"
+      },
+      {
+        "filename": "PMUS - NJBC - (2026.10.20).pdf",
+        "size": 401535,
+        "lastModified": "2026-10-21T21:16:00.000Z",
+        "eTag": "c3efded239761bd0c2a8578d952589d3"
+      },
+      {
+        "filename": "PMUS - NOCC - (2026.07.07).pdf",
+        "size": 177302,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "89e0ac0e1d78bf2ac3b0f296fc8da2a9"
+      },
+      {
+        "filename": "PMUS - NOCUFC - (2026.09.22).pdf",
+        "size": 395469,
+        "lastModified": "2026-09-28T20:50:37.000Z",
+        "eTag": "d62780e9c92dab91ea7cd1685be1dd10"
+      },
+      {
+        "filename": "PMUS - NPHC - (2026.07.07).pdf",
+        "size": 190823,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "b42ff40ec5caccac0fb81d8f6f56af59"
+      },
+      {
+        "filename": "PMUS - NTFLXRC - (2026.09.11).pdf",
+        "size": 390029,
+        "lastModified": "2026-09-13T21:09:44.000Z",
+        "eTag": "3119b5e73cc2ab0d41baae9b73cf3c4c"
+      },
+      {
+        "filename": "PMUS - NTPC - (2026.06.26).pdf",
+        "size": 211507,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "b4b6ec485bc490a47b05f15f0ae1ede5"
+      },
+      {
+        "filename": "PMUS - NWLDC - (2026.08.25).pdf",
+        "size": 397375,
+        "lastModified": "2026-08-25T20:10:52.000Z",
+        "eTag": "e275596c72636cbc963c09c019b5e362"
+      },
+      {
+        "filename": "PMUS - OPDC - (2026.06.30).pdf",
+        "size": 189273,
+        "lastModified": "2026-07-31T10:41:30.000Z",
+        "eTag": "d24dea6e25c9ba7d499340363cec9ec5"
+      },
+      {
+        "filename": "PMUS - PACCC - (2026.07.14).pdf",
+        "size": 183002,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "ced1bc23b45de13f9a52139e84de1e59"
+      },
+      {
+        "filename": "PMUS - PACUS - (2026.10.20).pdf",
+        "size": 387408,
+        "lastModified": "2026-10-21T21:16:00.000Z",
+        "eTag": "cd56c360e1f8e4fa263ce9762214d720"
+      },
+      {
+        "filename": "PMUS - PANDC - (2026.07.21).pdf",
+        "size": 113442,
+        "lastModified": "2026-07-23T20:15:53.000Z",
+        "eTag": "1a4b2a808780ab21b94e6cd1b4630e75"
+      },
+      {
+        "filename": "PMUS - PARC - (2026.09.29).pdf",
+        "size": 385689,
+        "lastModified": "2026-10-01T13:45:40.000Z",
+        "eTag": "1b33297975caa1184da66fef80105759"
+      },
+      {
+        "filename": "PMUS - PATC - (2026.06.22).pdf",
+        "size": 193617,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "932de72425d1730e421e61875221a3e1"
+      },
+      {
+        "filename": "PMUS - PCC - (2026.10.20).pdf",
+        "size": 396087,
+        "lastModified": "2026-10-21T21:16:00.000Z",
+        "eTag": "673310b47eaee621d9b40c1d4c6ecff4"
+      },
+      {
+        "filename": "PMUS - PHC - (2026.06.22).pdf",
+        "size": 194810,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "526557d039e33441a8129428790b5ec8"
+      },
+      {
+        "filename": "PMUS - PIC - (2026.07.07).pdf",
+        "size": 187629,
+        "lastModified": "2026-07-14T15:22:40.000Z",
+        "eTag": "42aa566435b69bbbc4342705f2f195de"
+      },
+      {
+        "filename": "PMUS - PINTC - (2026.06.22).pdf",
+        "size": 223224,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "37a0f29c9e7b7fe4d7c9411d3a3b0f5c"
+      },
+      {
+        "filename": "PMUS - PMMS15C - (2026.10.06).pdf",
+        "size": 412679,
+        "lastModified": "2026-10-07T03:37:07.000Z",
+        "eTag": "5c34c9290d3b5935c4d7f7799269a711"
+      },
+      {
+        "filename": "PMUS - PMMSC - (2026.10.06).pdf",
+        "size": 413508,
+        "lastModified": "2026-10-07T03:37:07.000Z",
+        "eTag": "ab400ea19c2b4d265010d92912002c3e"
+      },
+      {
+        "filename": "PMUS - PNTCBB - (2026.06.25).pdf",
+        "size": 241611,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "9cef0deab71c09e693b20a55133c1ea6"
+      },
+      {
+        "filename": "PMUS - PNTCBK - (2026.06.25).pdf",
+        "size": 243632,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "a324af58df47c777b896e5d29b7e99ad"
+      },
+      {
+        "filename": "PMUS - PNTCC - (2026.06.25).pdf",
+        "size": 242126,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "72f4f050a600bbe868c05a9f46b30641"
+      },
+      {
+        "filename": "PMUS - PNTCF - (2026.06.25).pdf",
+        "size": 241995,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "a49f92ccc4d6a77c785d6bbac67f7dc7"
+      },
+      {
+        "filename": "PMUS - PNTCIH - (2026.06.25).pdf",
+        "size": 242453,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "31c5cfc75cd52d40b8c1a2f1b9b441af"
+      },
+      {
+        "filename": "PMUS - PNTCM - (2026.06.25).pdf",
+        "size": 241729,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "9b96535fb180bb4433b0c00dcc05f64a"
+      },
+      {
+        "filename": "PMUS - PNTCRU - (2026.06.25).pdf",
+        "size": 242763,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "554ee5becd0bc1b122f233c8b38aed4f"
+      },
+      {
+        "filename": "PMUS - PNTCS - (2026.06.25).pdf",
+        "size": 240852,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "47528aac2d412957ab908e9fb9523846"
+      },
+      {
+        "filename": "PMUS - PNWPC - (2026.07.14).pdf",
+        "size": 114837,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "58cf4f38c56fc2409f21be75b780513e"
+      },
+      {
+        "filename": "PMUS - PRDC - (2026.06.08).pdf",
+        "size": 220913,
+        "lastModified": "2026-06-08T21:37:48.000Z",
+        "eTag": "d0cfae15f10a693bad5bc1418f71b767"
+      },
+      {
+        "filename": "PMUS - PVWC - (2026.07.14).pdf",
+        "size": 181606,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "5cc84625fc9add591c4beb2b6315cae8"
+      },
+      {
+        "filename": "PMUS - PWINCIS - (2026.10.22).pdf",
+        "size": 406296,
+        "lastModified": "2026-10-26T16:38:51.000Z",
+        "eTag": "1b2abad31223dca71ebbffe51fd716d8"
+      },
+      {
+        "filename": "PMUS - RAHEC - (2026.10.06).pdf",
+        "size": 411140,
+        "lastModified": "2026-10-07T03:37:08.000Z",
+        "eTag": "bfa6a0781bdad2ead1c3047cd503ccd0"
+      },
+      {
+        "filename": "PMUS - RAINC - (2026.10.07).pdf",
+        "size": 410012,
+        "lastModified": "2026-10-07T18:37:34.000Z",
+        "eTag": "93ab52c5e1241c1ba6fc12ea5b5d375f"
+      },
+      {
+        "filename": "PMUS - RAINCLI - (2026.10.19).pdf",
+        "size": 395798,
+        "lastModified": "2026-10-26T16:38:52.000Z",
+        "eTag": "a3dbd44233cb5652be9f5870fb8187db"
+      },
+      {
+        "filename": "PMUS - RDC - (2026.04.06).pdf",
+        "size": 207261,
+        "lastModified": "2026-06-22T14:51:19.000Z",
+        "eTag": "91e4b3f1abcdf9b1e8ac54345d75a819"
+      },
+      {
+        "filename": "PMUS - RDCCUS - (2026.10.20).pdf",
+        "size": 381515,
+        "lastModified": "2026-10-21T21:16:00.000Z",
+        "eTag": "a4caed535f54900cdf8ac4459b8cee73"
+      },
+      {
+        "filename": "PMUS - RLCBO - (2026.10.22).pdf",
+        "size": 386887,
+        "lastModified": "2026-10-26T16:38:51.000Z",
+        "eTag": "b7ab16a280336ad07d6c1f1279601cfd"
+      },
+      {
+        "filename": "PMUS - RLCRL - (2026.10.22).pdf",
+        "size": 383038,
+        "lastModified": "2026-10-26T16:38:50.000Z",
+        "eTag": "066581c4b8f471f9540c5171a15b0dc5"
+      },
+      {
+        "filename": "PMUS - RLCSPX - (2026.10.22).pdf",
+        "size": 384696,
+        "lastModified": "2026-10-26T16:38:50.000Z",
+        "eTag": "0b1ff5f57b859a40bc750037d48ad923"
+      },
+      {
+        "filename": "PMUS - RNCPC - (2026.10.06).pdf",
+        "size": 414275,
+        "lastModified": "2026-10-07T03:37:07.000Z",
+        "eTag": "b4e1424101fc9baeabd42a9906eff7a2"
+      },
+      {
+        "filename": "PMUS - ROTC - (2026.09.10).pdf",
+        "size": 388089,
+        "lastModified": "2026-09-10T21:55:53.000Z",
+        "eTag": "5ca6baf13e3ec7ec2f92bbeedb9a503f"
+      },
+      {
+        "filename": "PMUS - RTC - (2026.04.03).pdf",
+        "size": 204394,
+        "lastModified": "2026-04-07T17:08:13.000Z",
+        "eTag": "ea650121e44df509ba5a78f5ea267340"
+      },
+      {
+        "filename": "PMUS - RVCUS - (2026.09.11).pdf",
+        "size": 394012,
+        "lastModified": "2026-09-13T21:09:44.000Z",
+        "eTag": "1fb06306ee40322354fe66fc7cba3642"
+      },
+      {
+        "filename": "PMUS - RXCPC - (2026.10.06).pdf",
+        "size": 414300,
+        "lastModified": "2026-10-07T03:37:07.000Z",
+        "eTag": "b593779237f1cd05126d52350ab6e4e4"
+      },
+      {
+        "filename": "PMUS - SCC - (2026.06.26).pdf",
+        "size": 233724,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "a18e4ba436c037bd1d6dc48aa1bf9d58"
+      },
+      {
+        "filename": "PMUS - SDCNFL - (2026.08.25).pdf",
+        "size": 437947,
+        "lastModified": "2026-08-25T20:10:52.000Z",
+        "eTag": "57004495e431002be98c3e1cad95b28e"
+      },
+      {
+        "filename": "PMUS - SNAPC - (2026.10.06).pdf",
+        "size": 402291,
+        "lastModified": "2026-10-07T03:37:07.000Z",
+        "eTag": "6eaf433bca71bfc9299d9b986e3afb94"
+      },
+      {
+        "filename": "PMUS - SOLC - (2026.06.22).pdf",
+        "size": 198022,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "19afc2b731dff15d85f537564b16eaf7"
+      },
+      {
+        "filename": "PMUS - SPOTRC - (2026.09.11).pdf",
+        "size": 388535,
+        "lastModified": "2026-09-13T21:09:44.000Z",
+        "eTag": "8a62f8100abcedfd24b7388a5c0b45a6"
+      },
+      {
+        "filename": "PMUS - STSC - (2026.06.25).pdf",
+        "size": 228996,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "636020d4cdcd2a8001f14b9874eb21ff"
+      },
+      {
+        "filename": "PMUS - TAC - (2026.03.31).pdf",
+        "size": 214882,
+        "lastModified": "2026-04-01T22:11:44.000Z",
+        "eTag": "a02f5e62c0694c06bd33df0bf40f9fdf"
+      },
+      {
+        "filename": "PMUS - TC - (2026.04.03).pdf",
+        "size": 188570,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "77fc63400c27214f300e3fa0ddeba082"
+      },
+      {
+        "filename": "PMUS - TEC - (2026.03.26).pdf",
+        "size": 244462,
+        "lastModified": "2026-05-11T19:31:05.000Z",
+        "eTag": "76138f57745495b5e8f6a1144a017597"
+      },
+      {
+        "filename": "PMUS - TENYC - (2026.10.06).pdf",
+        "size": 408474,
+        "lastModified": "2026-10-07T03:37:07.000Z",
+        "eTag": "22a92fb6c81d97300c685c9560fab80e"
+      },
+      {
+        "filename": "PMUS - THRYC - (2026.10.06).pdf",
+        "size": 409072,
+        "lastModified": "2026-10-07T03:37:08.000Z",
+        "eTag": "5810fee36f4f21a011f14709277336a4"
+      },
+      {
+        "filename": "PMUS - TKLC - (2026.09.29).pdf",
+        "size": 359659,
+        "lastModified": "2026-10-01T13:45:40.000Z",
+        "eTag": "7751af8a5a1c963aa37fdfefe4c9945a"
+      },
+      {
+        "filename": "PMUS - TPDOC - (2026.10.06).pdf",
+        "size": 404595,
+        "lastModified": "2026-10-07T03:37:07.000Z",
+        "eTag": "14c107c814040cd1fd253b10aa94bc5d"
+      },
+      {
+        "filename": "PMUS - TPOYC - (2026.06.15).pdf",
+        "size": 187069,
+        "lastModified": "2026-06-17T09:50:24.000Z",
+        "eTag": "2717ed99aa5badff3ab31c974c79edd7"
+      },
+      {
+        "filename": "PMUS - TRC - (2026.06.22).pdf",
+        "size": 195081,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "c98bee3ed055cbf9b432acc74d5db7f3"
+      },
+      {
+        "filename": "PMUS - TSC - (2026.03.26).pdf",
+        "size": 222929,
+        "lastModified": "2026-05-11T19:31:05.000Z",
+        "eTag": "a90f78222e2a7927c703b842443d4f11"
+      },
+      {
+        "filename": "PMUS - TSUC - (2026.04.14).pdf",
+        "size": 176846,
+        "lastModified": "2026-04-16T14:23:19.000Z",
+        "eTag": "3ddd493f2f1e8e9d363f058430b544e2"
+      },
+      {
+        "filename": "PMUS - TWOYC - (2026.10.06).pdf",
+        "size": 408918,
+        "lastModified": "2026-10-07T03:37:08.000Z",
+        "eTag": "025e6c9dd6f3fad65e018c317b9085f1"
+      },
+      {
+        "filename": "PMUS - UNMBC - (2026.10.06).pdf",
+        "size": 405609,
+        "lastModified": "2026-10-07T03:37:07.000Z",
+        "eTag": "efe6e5b03a97dc7b54c4553a0b4330c0"
+      },
+      {
+        "filename": "PMUS - UNRTC - (2026.10.06).pdf",
+        "size": 408538,
+        "lastModified": "2026-10-07T03:37:08.000Z",
+        "eTag": "ca062ba80aab3440fef73c6366fadc4a"
+      },
+      {
+        "filename": "PMUS - URC - (2026.04.03).pdf",
+        "size": 188085,
+        "lastModified": "2026-04-07T17:08:13.000Z",
+        "eTag": "839112942cc9112f5bb1a0c466f603e9"
+      },
+      {
+        "filename": "PMUS - USBMPCMU - (2026.09.14).pdf",
+        "size": 410715,
+        "lastModified": "2026-09-14T17:13:19.000Z",
+        "eTag": "c80652c261dcce4c669887392013d06c"
+      },
+      {
+        "filename": "PMUS - USBMPCST - (2026.09.14).pdf",
+        "size": 411412,
+        "lastModified": "2026-09-14T17:13:19.000Z",
+        "eTag": "d7d87f556d4f63a9d572fa5c720236cc"
+      },
+      {
+        "filename": "PMUS - USEXPC - (2026.10.06).pdf",
+        "size": 399916,
+        "lastModified": "2026-10-07T03:37:08.000Z",
+        "eTag": "e9c36a17cfe1f8c14c2a72def93e6e45"
+      },
+      {
+        "filename": "PMUS - USEXPWC - (2026.09.30).pdf",
+        "size": 402892,
+        "lastModified": "2026-10-01T13:45:40.000Z",
+        "eTag": "928cad62e6e6da65d74796820294d53c"
+      },
+      {
+        "filename": "PMUS - USGCC - (2026.06.08).pdf",
+        "size": 213911,
+        "lastModified": "2026-06-08T21:37:48.000Z",
+        "eTag": "82c704eb8cf02a682a1c5b2c3f5fc7f4"
+      },
+      {
+        "filename": "PMUS - USGOVCC - (2026.08.18).pdf",
+        "size": 343052,
+        "lastModified": "2026-08-19T13:32:15.000Z",
+        "eTag": "9b3f6b1089594393c3fafca1c37594a4"
+      },
+      {
+        "filename": "PMUS - USGUBEWC - (2026.08.07).pdf",
+        "size": 391061,
+        "lastModified": "2026-08-07T09:42:56.000Z",
+        "eTag": "c12b64b44a58b17b035fe1548d5b4c56"
+      },
+      {
+        "filename": "PMUS - USHREWC - (2026.08.07).pdf",
+        "size": 389888,
+        "lastModified": "2026-08-07T09:42:56.000Z",
+        "eTag": "253ca43e826cf6035843e8513f3ad1c9"
+      },
+      {
+        "filename": "PMUS - USHSSCC - (2026.08.18).pdf",
+        "size": 348758,
+        "lastModified": "2026-08-19T13:32:15.000Z",
+        "eTag": "eacb5d705cafb57e5904560993c88371"
+      },
+      {
+        "filename": "PMUS - USMAYEWC - (2026.08.07).pdf",
+        "size": 389789,
+        "lastModified": "2026-08-07T09:42:56.000Z",
+        "eTag": "e1e6fe38ebc049382de7bb8f2fc76247"
+      },
+      {
+        "filename": "PMUS - USSEWC - (2026.08.07).pdf",
+        "size": 385329,
+        "lastModified": "2026-08-07T09:42:56.000Z",
+        "eTag": "709503948a71eeaa76b9d202d5d54765"
+      },
+      {
+        "filename": "PMUS - VMC - (2026.06.26).pdf",
+        "size": 233374,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "4a005c28e48604587e522cd0cd0ec847"
+      },
+      {
+        "filename": "PMUS - VOLC - (2026.06.22).pdf",
+        "size": 195417,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "a6310f85e7f0a51fede238efdf34e2f7"
+      },
+      {
+        "filename": "PMUS - VSC - (2026.07.14).pdf",
+        "size": 117048,
+        "lastModified": "2026-07-16T14:09:50.000Z",
+        "eTag": "2951198f2ed2fb668a9316f66a565c03"
+      },
+      {
+        "filename": "PMUS - VTC - (2026.06.26).pdf",
+        "size": 226875,
+        "lastModified": "2026-06-29T19:26:29.000Z",
+        "eTag": "4458087c79db76bb6f3619ea9f38984a"
+      },
+      {
+        "filename": "PMUS - WAC - (2026.08.26).pdf",
+        "size": 386879,
+        "lastModified": "2026-08-26T20:07:12.000Z",
+        "eTag": "0a73e38dfef94faa07f15449b9e67c68"
+      },
+      {
+        "filename": "PMUS - WEC - (2026.06.22).pdf",
+        "size": 194762,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "153b98db2e3cdba608021c0c1a434975"
+      },
+      {
+        "filename": "PMUS - WECC - (2026.06.22).pdf",
+        "size": 195775,
+        "lastModified": "2026-06-22T15:43:03.000Z",
+        "eTag": "f1d76171897dbe852888d7133133f679"
+      },
+      {
+        "filename": "PMUS - WINDC - (2026.10.07).pdf",
+        "size": 437139,
+        "lastModified": "2026-10-07T18:37:34.000Z",
+        "eTag": "b31a0446036d49684766521bb74ac444"
+      }
+    ]
+  }
+}

@@ -1,0 +1,104 @@
+CRYPTO
+Scope:
+ These rules shall apply to this contract.
+Underlying:
+ The Underlying for this Contract is the spot price of one <cryptocurrency> in
+
+U.S. dollars at <time>, according to a simple average of the CF <cryptocurrency> <index>
+
+for the 60 seconds prior to <time>, after Issuance and before <date>. Revisions to the
+
+Underlying made after Expiration will not be accounted for in determining the Expiration Value.
+Source Agency:
+The Source Agency is CF Benchmarks.
+Type:
+ The type of Contract is an Event Contract.
+Issuance:
+The Contract is based on the outcome of a recurrent data release. Thus, Contract
+
+iterations will be issued on a recurring basis, and future Contract iterations will generally
+
+correspond to the next hour, day, and year.
+<price>:
+ Kalshi may list iterations of the Contract with <price> levels that fall within an
+
+inclusive range between 0 and 100,000,000 USD at consecutive increments of <0.01>. Due to
+
+the potential for variability in the Underlying, the Exchange may modify <price> levels in
+
+response to suggestions by Members.
+<cryptocurrency>:
+<cryptocurrency> refers to a specific digital asset specified by the
+
+Exchange. For cryptocurrencies with multiple versions the Exchange will explicitly specify the
+
+version (or ticker).
+<index>:
+<index> refers to a specific CF Benchmarks Index (e.g. “Bitcoin Real-Time Index”)
+
+specified by the Exchange.
+<above/below/between/exactly/at least>:
+ <above/below/between/exactly/at least>
+
+refers to comparative thresholds used in numerical or rank-based conditions as specified by
+
+the Exchange. “Above X” means strictly greater than X, while “below X” means strictly less
+
+than X. “Exactly X” means equal to X, to the number of decimal places specified, and “at least
+
+X” means X or greater. “Between X and Y” means greater or equal to X and less than or equal
+
+to Y.
+<date>
+: <date> refers to a calendar date specified by the Exchange. The Exchange may list
+
+iterations of the Contract corresponding to variations of <date>.
+​​<time>:
+ <time> refers to a time on a calendar date specified by Kalshi. Kalshi may list
+
+iterations
+of the Contract corresponding to different statistical periods of <time>.
+Payout Criterion:
+ The Payout Criterion for the Contract encompasses the Expiration Values
+
+that the index is <above/below/between/exactly/at least> <price> on <date> at <time>. If
+
+no data is available or incomplete on the Expiration Date at the Expiration Time, then affected
+
+strikes resolve to No.
+Minimum Tick:
+ The Minimum Tick size for the Contract shall be $0.001.
+Position Accountability Level:
+ The Position Accountability Level for the Contract shall be
+
+$25,000 per strike, per Member.
+Last Trading Date:
+ The Last Trading Date and Time of the Contract will be <time> on
+
+<date>.
+Settlement Date:
+ The Settlement Date of the Contract shall be no later than the day after
+
+the Expiration Date, unless the Market Outcome is under review pursuant to Rule 7.1.
+Expiration Date:
+ The latest Expiration Date of the Contract shall be one week after <date>.
+
+If an event described in the Payout Criterion occurs, expiration will be moved to an earlier date
+
+and time in accordance with Rule 7.2.
+Expiration Time:
+ The Expiration time of the Contract shall be 10:00 AM ET.
+Settlement Value:
+ The Settlement Value for this Contract is $1.00.
+Expiration Value:
+ The Expiration Value is the value of the Underlying as documented by the
+
+Source Agency on the Expiration Date at the Expiration time.
+Contingencies:
+ Before Settlement, Kalshi may, at its sole discretion, initiate the Market
+
+Outcome Review Process pursuant to Rule 6.3(d) of the Rulebook. If an Expiration Value
+
+cannot be determined on the Expiration Date, Kalshi has the right to determine payouts
+
+pursuant to Rule 6.3(b) in the Rulebook.

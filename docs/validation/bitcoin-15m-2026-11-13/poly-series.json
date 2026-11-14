@@ -1,0 +1,22 @@
+{
+  "url": "https://gateway.polymarket.us/v1/series?slug=btc-updown-15m",
+  "started_at": "2026-11-13T06:24:50.439906+00:00",
+  "received_at": "2026-11-13T06:24:50.592610+00:00",
+  "http_status": 200,
+  "headers": {
+    "Date": "Fri, 13 Nov 2026 06:24:50 GMT",
+    "Content-Type": "application/json"
+  },
+  "sha256": "15f6909632258acfb60f1772aaff4d3257e2fd2d65977abd8abd94d91124eac4",
+  "body": {
+    "series": [
+      {
+        "id": "375",
+        "slug": "btc-updown-15m",
+        "title": "Bitcoin Up or Down (15m)",
+        "createdAt": "2026-09-22T15:15:08Z",
+        "updatedAt": "2026-09-22T15:15:08Z"
+      }
+    ]
+  }
+}

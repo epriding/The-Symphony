@@ -1,0 +1,8 @@
+{
+  "url": "https://docs.polymarket.us/faqs/crypto-faqs.md",
+  "retrieved_at": "2026-11-13T06:30:13.129758+00:00",
+  "http_status": 200,
+  "sha256": "02d8fca7a58cfcb28d4446f90db12ebf04b0917b0545dae1108706fc01c58cea",
+  "original_download_sha256": "ca2f795f5a12bda02d8eebe6822d2e57f92aebf961ef90cbcf683b1ce3f70931",
+  "normalization": "Trailing whitespace removed for source-control hygiene"
+}

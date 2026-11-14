@@ -1,0 +1,145 @@
+{
+  "description": "SHA-256 of saved research evidence files; JSON bodies are decoded, not raw wire bytes.",
+  "files": [
+    {
+      "path": "kalshi-book.json",
+      "bytes": 15884,
+      "sha256": "4bb4c87ad486b637eabf0c4dccd6d3eadd92d8d8b4611a3c2e2a110ce1581704"
+    },
+    {
+      "path": "kalshi-contract-source.json",
+      "bytes": 223,
+      "sha256": "ed14352a257c8c52e1c77d4aa430ee521ee2fa754b6aaa51ad03a27e38a6c7a6"
+    },
+    {
+      "path": "kalshi-contract.pdf",
+      "bytes": 26548,
+      "sha256": "fde90b9c0825df277b0b2b2be6239af221eafd01a624c1b2d3a9eaff2d6fe75c"
+    },
+    {
+      "path": "kalshi-contract.txt",
+      "bytes": 3823,
+      "sha256": "a3e5fbb8bab95cdb6017494f64fdcfb0cbae65318743a57a71e8be78dc28f851"
+    },
+    {
+      "path": "kalshi-open.json",
+      "bytes": 3304,
+      "sha256": "60685a2ad017d95306b16e48b63276fe811d9c05ced2c5260b86abc067a1be13"
+    },
+    {
+      "path": "kalshi-selected-book.json",
+      "bytes": 521,
+      "sha256": "b1abceaf9ee99f968977a01874a0562d28068e56ba67e18cdf6d3b53b0570185"
+    },
+    {
+      "path": "kalshi-selected.json",
+      "bytes": 3237,
+      "sha256": "995e200c448626296913cc67dde5abea14380f3922fddfeb88e2e268d65b395f"
+    },
+    {
+      "path": "kalshi-series.json",
+      "bytes": 1923,
+      "sha256": "3481245f132dbaa115742b8f2e9ffed4e54c18311ca37f51867ff2fa73f84ab7"
+    },
+    {
+      "path": "poly-auth-host.json",
+      "bytes": 368,
+      "sha256": "7011b15816c3ed95e1c27581d02508bd683f1d2a71ad6c42b75e8b5fe2286b9f"
+    },
+    {
+      "path": "poly-btc-events-current.json",
+      "bytes": 595,
+      "sha256": "5450b445e4d300fb3e9967b28f8247905292ffb76762ae3db151f0d898892650"
+    },
+    {
+      "path": "poly-btc-today-events.json",
+      "bytes": 729095,
+      "sha256": "b2ab78fd369be48d8f1ca6182819f553c206b82a34987e3ad88bee00a1c91a4b"
+    },
+    {
+      "path": "poly-cpcbtc-amendment-source.json",
+      "bytes": 286,
+      "sha256": "ca563885bc412acb73e50262dd3a95e263c4020eb04cdf6d9edf673cd7b85051"
+    },
+    {
+      "path": "poly-cpcbtc-amendment.pdf",
+      "bytes": 184602,
+      "sha256": "f6bc11e8c82520b6d5c8aedb7856cb7d498060f3747eebb9b18e64ba2304ad2e"
+    },
+    {
+      "path": "poly-cpcbtc-amendment.txt",
+      "bytes": 12929,
+      "sha256": "599601cdfdd82ab5904493d7379225a2bdac18121164ff3d6b498d26c468ea6f"
+    },
+    {
+      "path": "poly-cpcbtc-source.json",
+      "bytes": 266,
+      "sha256": "e3f6a58bbf4ce9124d4e806465890bfdba420cbe570846160bd7c811427ae0dd"
+    },
+    {
+      "path": "poly-cpcbtc.pdf",
+      "bytes": 355738,
+      "sha256": "09cbeaaa2d40481fc89f80c3e2734a090a6917232515975ad58ff9e4e90232a5"
+    },
+    {
+      "path": "poly-cpcbtc.txt",
+      "bytes": 12655,
+      "sha256": "c14b1e14445686e4721e2a9dab6832c7a86a9e401b42eeb7c847a7837909e452"
+    },
+    {
+      "path": "poly-crypto-source.json",
+      "bytes": 393,
+      "sha256": "30dd3102447e86b32b5c2f17f8a182aba34cc06bf7c4b30e0a6ac4756904bef5"
+    },
+    {
+      "path": "poly-crypto-source.md",
+      "bytes": 8892,
+      "sha256": "02d8fca7a58cfcb28d4446f90db12ebf04b0917b0545dae1108706fc01c58cea"
+    },
+    {
+      "path": "poly-fees-source.json",
+      "bytes": 381,
+      "sha256": "545c0b0f637df0a8938a3fac4650c4c7dcdad5bd8d434e27ec56867bce32c60b"
+    },
+    {
+      "path": "poly-fees-source.md",
+      "bytes": 20190,
+      "sha256": "2c4c7719d19d0f9e2d592c7f78849cae42b127daf15daff7db6390c1cd30c5c3"
+    },
+    {
+      "path": "poly-notices.json",
+      "bytes": 38439,
+      "sha256": "1fd6f9c6d671e467b57be0177286fa2a17f2abee68d6d307edb13a7eb1caaef3"
+    },
+    {
+      "path": "poly-products.json",
+      "bytes": 40642,
+      "sha256": "64c9502c7de657513cf5bba62af8da3458329e0ed3445232f9e9d44a4b2c7cdb"
+    },
+    {
+      "path": "poly-selected-book.json",
+      "bytes": 2473,
+      "sha256": "3b488152f0b21f5ccf248bc5c8011274182c0b838a9b3593cb9abb3067c9f097"
+    },
+    {
+      "path": "poly-selected-by-id.json",
+      "bytes": 5416,
+      "sha256": "d43e404ef0b016955e115a99c80f8f6b3724fca9fea205b46584c5cc9415a84e"
+    },
+    {
+      "path": "poly-series-events.json",
+      "bytes": 532,
+      "sha256": "fdcfa8c04b363bcf818a65028a255b3ba3cc9a3eb6ff1932ec4cba2fa93e14ae"
+    },
+    {
+      "path": "poly-series.json",
+      "bytes": 630,
+      "sha256": "b393e8db4b705bc0ab766899b50c76b0a043dda3687d394ce85f1ebfb0268243"
+    },
+    {
+      "path": "poly-upcoming-book.json",
+      "bytes": 456,
+      "sha256": "4a697e2ccb18d968b40d6d2be855901e5540ecea2103bc3c6b286849ae053c4c"
+    }
+  ]
+}

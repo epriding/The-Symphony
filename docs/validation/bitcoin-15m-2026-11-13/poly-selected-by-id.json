@@ -1,0 +1,153 @@
+{
+  "url": "https://gateway.polymarket.us/v1/market/id/2464553",
+  "started_at": "2026-11-13T06:29:02.478889+00:00",
+  "received_at": "2026-11-13T06:29:02.631396+00:00",
+  "http_status": 200,
+  "headers": {
+    "Date": "Fri, 13 Nov 2026 06:29:02 GMT",
+    "Content-Type": "application/json"
+  },
+  "sha256": "26e8ccfa0ed4c90c4be7e8947534fdbda4baf74a82556998856771486dfe4664",
+  "body": {
+    "market": {
+      "id": "2464553",
+      "question": "BTC Up or Down 15m",
+      "slug": "cpc-btc-updown-15m-2026-11-13-0545z",
+      "endDate": "2026-11-13T06:00:14Z",
+      "category": "crypto",
+      "startDate": "2026-11-12T17:45:17Z",
+      "description": "This market will settle to Up if the Bitcoin price at 1:00AM ET on Nov 13, 2026 is greater than or equal to the price at 12:45AM ET on Nov 13, 2026. Otherwise, this market will settle to Down. Outcome sourced from CF Benchmarks' Bitcoin Real-Time Index (BRTI), available at https://www.cfbenchmarks.com/data/indices/BRTI. The price at the beginning and at the end of the time range is determined the same way: in the last minute before each of those two times, 60 BRTI prices are collected. The official value for that time is the simple average of these prices, rounded to the nearest 2 decimal places. Please note that this market is about the price according to CF Benchmarks' BRTI, not according to other sources or spot markets.",
+      "active": true,
+      "marketType": "",
+      "closed": true,
+      "createdAt": "2026-11-12T18:04:02Z",
+      "updatedAt": "2026-11-13T06:09:41Z",
+      "archived": false,
+      "orderPriceMinTickSize": 0.01,
+      "gameStartTime": "2026-11-13T05:45:00Z",
+      "manualActivation": false,
+      "sportsMarketType": "",
+      "marketSides": [
+        {
+          "id": "4928492",
+          "marketSideType": "MARKET_SIDE_TYPE_INSTRUMENT",
+          "identifier": "cpc-btc-updown-15m-2026-11-13-0545z",
+          "createdAt": "2026-11-12T18:04:02Z",
+          "updatedAt": "2026-11-12T18:04:02Z",
+          "description": "Yes",
+          "price": "0",
+          "marketId": 2464553,
+          "long": true,
+          "tradable": true
+        },
+        {
+          "id": "4928493",
+          "marketSideType": "MARKET_SIDE_TYPE_INSTRUMENT",
+          "identifier": "cpc-btc-updown-15m-2026-11-13-0545z",
+          "createdAt": "2026-11-12T18:04:02Z",
+          "updatedAt": "2026-11-12T18:04:02Z",
+          "description": "No",
+          "price": "1",
+          "marketId": 2464553,
+          "long": false,
+          "tradable": true
+        }
+      ],
+      "outcomes": "[\"Yes\",\"No\"]",
+      "outcomePrices": "[\"0\",\"1\"]",
+      "ep3Status": "EXPIRED",
+      "status": "MARKET_STATUS_RESOLVED",
+      "assetPriceTerms": {
+        "marketType": "ASSET_PRICE_MARKET_TYPE_UP_DOWN",
+        "asset": {
+          "assetClass": "ASSET_CLASS_CRYPTO",
+          "symbol": "btc"
+        },
+        "indexSymbol": "BRTI",
+        "horizon": "15m",
+        "windowStart": "2026-11-13T05:45:00Z",
+        "windowEnd": "2026-11-13T06:00:00Z",
+        "priceToBeat": {
+          "value": "68545.77",
+          "currency": "USD"
+        },
+        "strike": null,
+        "rangeLower": null,
+        "rangeUpper": null,
+        "rangeKind": "ASSET_PRICE_RANGE_KIND_UNSPECIFIED",
+        "direction": "ASSET_PRICE_DIRECTION_UNSPECIFIED",
+        "settlementPrice": {
+          "value": "68070.53",
+          "currency": "USD"
+        },
+        "chart": {
+          "ranges": [
+            {
+              "kind": "ASSET_PRICE_CHART_KIND_LIVE",
+              "span": "30s",
+              "bucket": "ASSET_PRICE_BUCKET_1S"
+            },
+            {
+              "kind": "ASSET_PRICE_CHART_KIND_WINDOW",
+              "span": "900s",
+              "bucket": "ASSET_PRICE_BUCKET_1S"
+            },
+            {
+              "kind": "ASSET_PRICE_CHART_KIND_LOOKBACK",
+              "span": "3600s",
+              "bucket": "ASSET_PRICE_BUCKET_5S"
+            }
+          ],
+          "resolved": {
+            "kind": "ASSET_PRICE_CHART_KIND_WINDOW",
+            "span": "900s",
+            "bucket": "ASSET_PRICE_BUCKET_1S"
+          },
+          "color": {
+            "light": "#F7931A",
+            "dark": "#F7931A"
+          },
+          "axis": {
+            "headroom": 0.15,
+            "expandRate": 0.22,
+            "contractRate": 0.03,
+            "snap": 0.001,
+            "tickCount": 5,
+            "minSpan": null
+          }
+        },
+        "priceDecimals": 2,
+        "assetName": "",
+        "priceUnit": "",
+        "nextWindowStart": "2026-11-13T06:00:00Z",
+        "contractMonth": "",
+        "pendingPriceToBeat": null
+      },
+      "sportsMarketTypeV2": "SPORTS_MARKET_TYPE_UNSPECIFIED",
+      "hidden": false,
+      "tags": [],
+      "title": "BTC Up or Down 15m",
+      "subtitle": "Nov 13, 12:45AM - 1:00AM",
+      "feeCoefficient": 0.095,
+      "titleShort": "BTC Up or Down 15m",
+      "ep3SyncedAt": "2026-11-13T06:00:16Z",
+      "minimumTradeQty": 0.01,
+      "comboEnabled": true,
+      "politics": null,
+      "eventSubcategory": "BTC",
+      "singlesRfqConfig": {
+        "enabled": true,
+        "midpointDeviation": 0.2,
+        "minOrderValueUsd": 2500,
+        "maxQuoteAgeSeconds": 30,
+        "quoteWindows": [
+          {
+            "windowMs": "400"
+          }
+        ],
+        "ruleName": "default",
+        "version": "singles-market-default-v1.1"
+      }
+    }
+  }
+}

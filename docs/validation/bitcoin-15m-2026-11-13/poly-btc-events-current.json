@@ -1,0 +1,16 @@
+{
+  "url": "https://gateway.polymarket.us/v1/events?seriesId=375&startDateMin=2026-11-13T06%3A00%3A00Z&startDateMax=2026-11-13T06%3A30%3A00Z&limit=10",
+  "started_at": "2026-11-13T06:25:53.479191+00:00",
+  "received_at": "2026-11-13T06:25:53.837664+00:00",
+  "http_status": 200,
+  "headers": {
+    "Date": "Fri, 13 Nov 2026 06:25:53 GMT",
+    "Content-Type": "application/json",
+    "last-modified": "Fri, 13 Nov 2026 06:25:53 GMT",
+    "Cache-Control": "public, max-age=30"
+  },
+  "sha256": "24de1c4a19c43ad41b013f13dcd858c17b0daa7f33a53f19913e5b11366d1c2e",
+  "body": {
+    "events": []
+  }
+}

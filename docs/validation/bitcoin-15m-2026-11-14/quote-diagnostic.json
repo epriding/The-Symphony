@@ -1,0 +1,16 @@
+{
+  "description": "One-pair top-of-book arithmetic only. Excludes fees, routing slippage, profit buffers, and exceptional-settlement risk. No simulated or real order.",
+  "sample_received_at": {
+    "kalshi-book": "2026-11-14T02:13:29.135441+00:00",
+    "poly-book": "2026-11-14T02:13:29.029510+00:00"
+  },
+  "poly_source_transact_time": "2026-11-14T02:13:03.155077523Z",
+  "prices_usd": {
+    "kalshi_yes_ask": "0.0050",
+    "kalshi_no_ask": "0.9960",
+    "poly_yes_ask": "0.0300",
+    "poly_no_ask": "0.9800",
+    "kalshi_yes_poly_no_cost": "0.9850",
+    "poly_yes_kalshi_no_cost": "1.0260"
+  }
+}

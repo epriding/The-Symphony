@@ -1,0 +1,9 @@
+{
+  "url": "https://api.polymarket.us/v1/markets?categories=crypto&closed=false&limit=1",
+  "started_at": "2026-11-13T06:24:38.566798+00:00",
+  "received_at": "2026-11-13T06:24:38.851001+00:00",
+  "http_status": 401,
+  "headers": {},
+  "sha256": "84c2aea0d1436930adfe60cf7284fdd4acebb4fde5d03db39243f7d0296801dc",
+  "body_text": "Missing required API key headers\n"
+}

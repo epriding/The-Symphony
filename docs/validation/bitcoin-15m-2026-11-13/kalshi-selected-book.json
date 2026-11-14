@@ -1,0 +1,17 @@
+{
+  "url": "https://external-api.kalshi.com/trade-api/v2/markets/KXBTC15M-26NOV130100-00/orderbook",
+  "started_at": "2026-11-13T06:27:26.047238+00:00",
+  "received_at": "2026-11-13T06:27:26.298259+00:00",
+  "http_status": 200,
+  "headers": {
+    "Content-Type": "application/json; charset=utf-8",
+    "Date": "Fri, 13 Nov 2026 06:27:26 GMT"
+  },
+  "sha256": "e07d09f130e604a9e1acfc736fb57cbdfc33d8a5a253466a0cbd5c98cf6c9f74",
+  "body": {
+    "orderbook_fp": {
+      "no_dollars": [],
+      "yes_dollars": []
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "url": "https://gateway.polymarket.us/v1/markets/cpc-btc-updown-15m-2026-11-13-0700z/book",
+  "started_at": "2026-11-13T06:28:23.213334+00:00",
+  "received_at": "2026-11-13T06:28:23.413230+00:00",
+  "http_status": 404,
+  "headers": {},
+  "sha256": "9b4dde07067af81c2fa4d7348fb8a51fc36e47dead259fd187f3658798bfdcab",
+  "body": {
+    "code": 5,
+    "message": "market with slug \"cpc-btc-updown-15m-2026-11-13-0700z\" not found",
+    "details": []
+  }
+}

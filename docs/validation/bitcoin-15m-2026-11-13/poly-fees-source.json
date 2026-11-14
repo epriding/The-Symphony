@@ -1,0 +1,8 @@
+{
+  "url": "https://docs.polymarket.us/fees.md",
+  "retrieved_at": "2026-11-13T06:30:12.926628+00:00",
+  "http_status": 200,
+  "sha256": "2c4c7719d19d0f9e2d592c7f78849cae42b127daf15daff7db6390c1cd30c5c3",
+  "original_download_sha256": "6d19b077f4046d292847398951706dd47da910a31592e6cc5c696d5d7de08f90",
+  "normalization": "Trailing whitespace removed for source-control hygiene"
+}
