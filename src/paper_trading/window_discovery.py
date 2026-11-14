@@ -18,6 +18,8 @@ class WindowMarket:
     market: object
     subscription: str
     terms: tuple
+    event_ticker: str = ''
+    fee_coefficient: str | None = None
 
 
 def _utc(value):
@@ -37,7 +39,7 @@ def normalize_window(venue, raw):
                 or terms['priceDecimals'] != 2 or terms['priceToBeat']['currency'] != 'USD'):
             raise ValueError('Unknown US asset terms')
         start, end = _utc(terms['windowStart']), _utc(terms['windowEnd'])
-        threshold = dec(terms['priceToBeat']['value'])
+        threshold = dec(terms['priceToBeat']['value']) if terms.get('priceToBeat') else None
         text = raw['description'].lower()
         if not all(token in text for token in ('cf benchmarks', 'brti', '60', 'simple average',
                     '2 decimal places', 'greater than or equal to')):
@@ -50,10 +52,10 @@ def normalize_window(venue, raw):
         if (not raw['ticker'].startswith('KXBTC15M-')
                 or not raw['event_ticker'].startswith('KXBTC15M-')
                 or raw['strike_type'] != 'greater_or_equal'
-                or int(raw['custom_strike']['round_digits']) != 2):
+                or int(raw.get('custom_strike',{}).get('round_digits',2)) != 2):
             raise ValueError('Unknown Kalshi series/strike')
         start, end = _utc(raw['open_time']), _utc(raw['close_time'])
-        threshold = dec(raw['floor_strike'])
+        threshold = dec(raw['floor_strike']) if raw.get('floor_strike') is not None else None
         text = (raw['rules_primary']+' '+raw['rules_secondary']).lower()
         if not all(token in text for token in ('cf benchmarks', 'brti', 'sixty seconds',
                                               '60 rti prices', '2 decimal places', 'at least')):
@@ -62,11 +64,14 @@ def normalize_window(venue, raw):
         tick = min(dec(row['step']) for row in raw['price_ranges'])
     else:
         raise ValueError('Only US production and Kalshi are supported')
-    if end-start != 900 or start % 900 or threshold <= 0 or threshold != threshold.quantize(Decimal('.01')):
+    if (end-start != 900 or start % 900 or (threshold is not None
+            and (threshold <= 0 or threshold != threshold.quantize(Decimal('.01'))))):
         raise ValueError('Invalid 15m window/threshold')
     market = market_metadata(venue, raw, dict(tick_size=tick, quantity_step=1,
         min_quantity=max(1,float(raw.get('minimumTradeQty',1))), category='crypto'))
-    return WindowMarket(market, subscription, ('BTC','BRTI',start,end,str(threshold),'2','gte','mean60'))
+    return WindowMarket(market, subscription,
+        ('BTC','BRTI',start,end,str(threshold) if threshold is not None else 'pending','2','gte','mean60'),
+        raw.get('event_ticker',''), str(raw['feeCoefficient']) if 'feeCoefficient' in raw else None)
 
 
 def match_windows(windows, *, now):
@@ -74,13 +79,18 @@ def match_windows(windows, *, now):
     for window in windows:
         if window.terms[3] <= now or window.terms[2] > (int(now)//900+1)*900:
             continue
-        grouped[window.terms][window.market.exchange].append(window)
+        grouped[window.terms[:4]+window.terms[5:]][window.market.exchange].append(window)
     pairs = []
     for terms, venues in sorted(grouped.items()):
         if set(venues) != {'KALSHI','POLYMARKET_US'} or any(len(v) != 1 for v in venues.values()):
             reasons['missing_or_ambiguous_counterpart'] += 1
             continue
-        pairs.append(tuple(venues[venue][0] for venue in sorted(venues)))
+        pair = tuple(venues[venue][0] for venue in sorted(venues))
+        thresholds = {w.terms[4] for w in pair}
+        if len(thresholds-{'pending'}) > 1 or ('pending' in thresholds and pair[0].terms[2] <= now):
+            reasons['opening_threshold_unavailable_or_different'] += 1
+            continue
+        pairs.append(pair)
     return pairs, dict(reasons)
 
 

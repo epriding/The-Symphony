@@ -124,12 +124,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T08: Activate rolling public subscriptions
 
-- [ ] Implement T08.
+- [x] Implement T08.
 - Description: Prepare the next window and change the active strategy market set under runtime supervision.
 - Acceptance:
-  - [ ] Prepare current/next subscriptions within configured limits and require verified metadata, thresholds, and full fresh depth on both venues before activation.
-  - [ ] Atomically change callback market membership and readiness at rollover without admitting old-window decisions, permitting concurrent callbacks, or resetting account state. Reconnect restores actual current readiness rather than trading missed windows.
-  - [ ] Block old entry at cutoff and run at least three successive synthetic windows without manual edits. Preserve legacy fixed-market configuration and observation-only mode.
+  - [x] Prepare current/next subscriptions within configured limits and require verified metadata, thresholds, and full fresh depth on both venues before activation.
+  - [x] Atomically change callback market membership and readiness at rollover without admitting old-window decisions, permitting concurrent callbacks, or resetting account state. Reconnect restores actual current readiness rather than trading missed windows.
+  - [x] Block old entry at cutoff and run at least three successive synthetic windows without manual edits. Preserve legacy fixed-market configuration and observation-only mode.
 - Verify: `python3 -m pytest -q tests/test_complement_rolling.py tests/test_bot_startup_lifecycle_v1.py tests/test_bot_loop_v1.py`.
 - Dependencies: T02, T07.
 - Likely files: `src/paper_trading/runtime.py`, `src/paper_trading/runtime_config.py`, `src/api/interfaces/polymarket_us_public.py`, `src/api/interfaces/kalshi.py`, `tests/test_complement_rolling.py`.

@@ -28,6 +28,8 @@ def _public_startup_buffer_bytes(config):
         return 0
     queue_slots = sum(_public_queue_limit(options['markets'])
                       for venue, options in config['feeds'].items() if venue == 'POLYMARKET_US')
+    if 'rolling' in config:
+        queue_slots = 2*config['runtime']['limits']['max_markets']
     # Reserve wire-text storage plus decoded queue/parser working copies.
     return queue_slots * config['runtime']['limits']['max_event_bytes'] * 8
 
@@ -128,7 +130,7 @@ def validate_bot_config(value, *, require_runtime=False):
     if 'runtime' not in raw and not require_runtime:
         return raw
     supported = {'strategy_portfolios', 'starting_balances', 'risk', 'execution',
-                 'feeds', 'market_overrides', 'strategies', 'runtime'}
+                 'feeds', 'market_overrides', 'strategies', 'runtime', 'rolling'}
     if set(raw) - supported:
         raise ValueError('Unsupported bot configuration keys; execution is paper-only')
     if not isinstance(raw.get('strategy_portfolios'), dict):
@@ -159,17 +161,32 @@ def validate_bot_config(value, *, require_runtime=False):
         raise ValueError('runtime.limits must contain all specified limits')
     for key in LIMITS:
         positive(limits[key], key, integer=True)
+    rolling = raw.get('rolling')
+    if rolling is not None:
+        if not isinstance(rolling, dict) or set(rolling)-{'discovery_interval_seconds', 'polymarket_series_id', 'max_pages', 'page_size'}:
+            raise ValueError('Invalid rolling settings')
+        rolling.setdefault('discovery_interval_seconds',15)
+        rolling.setdefault('polymarket_series_id',375)
+        rolling.setdefault('max_pages',3)
+        rolling.setdefault('page_size',20)
+        positive(rolling['discovery_interval_seconds'],'discovery interval')
+        for key, upper in (('polymarket_series_id',1000000),('max_pages',10),('page_size',200)):
+            positive(rolling[key],key,integer=True)
+            if rolling[key] > upper:
+                raise ValueError('Rolling discovery limit exceeded')
     entries = raw.get('strategies')
     if not isinstance(entries, list) or len(entries) > limits['max_strategies']:
         raise ValueError('strategies must be a bounded list')
     feeds = raw.get('feeds')
     if not isinstance(feeds, dict) or not feeds:
         raise ValueError('At least one configured feed is required')
+    if rolling is not None and set(feeds) != {'KALSHI','POLYMARKET_US'}:
+        raise ValueError('Rolling complement discovery requires both production venues')
     identities = set()
     for venue, options in feeds.items():
         if venue not in raw['execution']['venues'] or venue not in ('POLYMARKET_US', 'KALSHI'):
             raise ValueError(f'Unknown public venue {venue}')
-        if not isinstance(options, dict) or not isinstance(options.get('markets'), list) or not options['markets']:
+        if not isinstance(options, dict) or not isinstance(options.get('markets'), list) or (not options['markets'] and rolling is None):
             raise ValueError(f'Explicit markets required for {venue}')
         credential_keys = ({'key_id_env', 'private_key_env'} if venue == 'KALSHI'
                            else {'key_id_env', 'secret_key_env'})
@@ -196,7 +213,7 @@ def validate_bot_config(value, *, require_runtime=False):
             raise ValueError('Strategy names/factories must be valid and names unique')
         names.add(name)
         required = entry['required_markets']
-        if (not isinstance(required, list) or not required
+        if (not isinstance(required, list) or (not required and rolling is None)
                 or any(not isinstance(key, str) or key not in identities for key in required)
                 or len(set(required)) != len(required)):
             raise ValueError(f'Strategy {name} requires an unsubscribed market')

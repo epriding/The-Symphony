@@ -88,7 +88,7 @@ async def _create_public_feeds(settings, limits, *, timeout):
                 feed = PolymarketUSMarketData(options['markets'], key, secret,
                              overrides=options.get('market_rules', {}),
                              read_interval=options['read_interval'],
-                             queue_limit=_public_queue_limit(options['markets']), **common)
+                             queue_limit=max(1,_public_queue_limit(options['markets'])), **common)
             feeds.append(feed)
     except BaseException as error:
         for feed in feeds:
@@ -140,6 +140,10 @@ class BotRunner:
         self._dirty = False
         self._stopping = False
         self._identity_mapping = {}
+        self._windows = []
+        self._discovery_ready = False
+        self._rolling_paused = False
+        self._fee_blocked = set()
         self._last_status = None
         self._event_bytes = 0
         self._event_bytes_highwater = 0
@@ -201,6 +205,95 @@ class BotRunner:
             self._producer_error = error
             self._wake.set()
 
+    async def _discover(self):
+        from .window_discovery import discover_windows
+        failures = 0
+        while True:
+            try:
+                pairs, reasons = await asyncio.wait_for(discover_windows(self.feeds,
+                    now=self.clock.source(), settings=self.config['rolling']),
+                    self.runtime['startup_timeout_seconds'])
+                rows = [[dict(market=w.market, subscription=w.subscription, terms=list(w.terms),
+                              event_ticker=w.event_ticker, fee_coefficient=w.fee_coefficient)
+                         for w in pair] for pair in pairs]
+                self._put(('windows', dict(pairs=rows, reasons=reasons)))
+                failures = 0
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                from ..api.interfaces.bounded_public import PublicCapacityError
+                if isinstance(error, (PublicCapacityError, BufferError)):
+                    self._producer_error = error
+                    self._wake.set()
+                    return
+                failures += 1
+                self._put(('windows_error', type(error).__name__))
+            await asyncio.sleep(min(30, self.config['rolling']['discovery_interval_seconds']
+                                    *2**min(failures,4)))
+
+    async def _install_windows(self, pairs, reasons):
+        if len(pairs) > 2 or any(len(pair) != 2 for pair in pairs):
+            raise ValueError('Discovery exceeded current/next window bound')
+        new_keys = {f"{row['market'].exchange}:{row['market'].market_id}"
+                    for pair in pairs for row in pair}
+        self._control('discovery', windows=len(pairs), reasons=reasons)
+        self._discovery_ready = True
+        if len(set(self._session.state.markets) | new_keys) > self.limits['max_markets']:
+            self._rolling_paused = True
+            self._control('rolling_capacity', reason='old obligations occupy market capacity')
+            return
+        self._rolling_paused = False
+        self._fee_blocked = set()
+        for feed in self.feeds:
+            additions = [row for pair in pairs for row in pair if row['market'].exchange == feed.exchange]
+            subscriptions = list(dict.fromkeys([*feed.markets, *(row['subscription'] for row in additions)]))
+            feed.set_markets(subscriptions)
+            for row in additions:
+                market, subscription = row['market'], row['subscription']
+                self._identity_mapping[f'{feed.exchange}:{subscription}'] = f'{feed.exchange}:{market.market_id}'
+                if hasattr(feed, 'identities'):
+                    feed.identities[subscription] = market.market_id
+                if hasattr(feed, 'overrides'):
+                    feed.overrides[subscription] = dict(tick_size=market.tick_size,
+                        quantity_step=market.quantity_step, min_quantity=market.min_quantity,
+                        category=market.category)
+                if row.get('event_ticker') and hasattr(feed, 'normalizer'):
+                    feed.normalizer.event_members.setdefault(row['event_ticker'],set()).add(market.market_id)
+                coefficient = row.get('fee_coefficient')
+                rules = self._session.engine.config.venues[feed.exchange]
+                if coefficient is not None:
+                    from .models import dec
+                    schedule = rules.fee_schedule(market.market_id, self.clock())
+                    if schedule.model != 'polymarket_us' or dec(schedule.taker) < dec(coefficient):
+                        self._fee_blocked.add(f'{feed.exchange}:{market.market_id}')
+                        market = replace(market, active=False, tradable={'YES':False,'NO':False})
+                        self._control('fee_profile_unavailable', exchange=feed.exchange, market_id=market.market_id)
+                await self._session.add_market(market)
+        self._windows = pairs
+
+    def _activate_window(self):
+        if 'rolling' not in self.config or self._rolling_paused:
+            return
+        pair = next((pair for pair in self._windows
+                     if pair[0]['terms'][2] <= self.clock() < pair[0]['terms'][3]), None)
+        if pair is None or any(row['terms'][4] == 'pending' for row in pair):
+            return
+        if pair[0]['terms'] != pair[1]['terms']:
+            return
+        required = [f"{row['market'].exchange}:{row['market'].market_id}" for row in pair]
+        if not all(self._market_ready(key)[0] and key not in self._fee_blocked for key in required):
+            return
+        for slot in self.slots:
+            if slot.disabled or slot.task is not None or slot.entry['required_markets'] == required:
+                continue
+            markets = {row['market'].exchange:row['market'].market_id for row in pair}
+            terms = {row['market'].exchange:list(row['terms']) for row in pair}
+            slot.entry['required_markets'] = required
+            slot.context.settings.update(markets=markets, terms=terms)
+            slot.pending = True
+            self._control('window_activation', strategy=slot.entry['name'], markets=markets,
+                          terms=terms, required_markets=required)
+
     async def _refresh(self, feed):
         try:
             while True:
@@ -220,7 +313,7 @@ class BotRunner:
             self._wake.set()
 
     def _put(self, item):
-        if item[0] in ('public', 'market'):
+        if item[0] in ('public', 'market', 'windows'):
             if item[0] == 'public' and not isinstance(item[1], PublicEventEnvelope):
                 raise ValueError('Public feed must yield PublicEventEnvelope')
             encoded = json.dumps(encode(item[1]), allow_nan=False, separators=(',', ':')).encode()
@@ -244,7 +337,7 @@ class BotRunner:
             state, engine = self._session.state, self._session.engine
             owned = retained_bytes((state.markets, state.orderbooks, state.market_quotes,
                 state.portfolios, engine.orders, engine.books, engine.groups, engine.executions,
-                engine.outbox, engine.credit_outbox, engine.audit, engine.seen_trades))
+                engine.outbox, engine.credit_outbox, engine.audit, engine.seen_trades, self._windows))
         total = (self._base_bytes + self._reserved_bytes + self._event_bytes + owned + extra
                  + sum(slot.snapshot_bytes for slot in self.slots))
         self._memory_highwater = max(self._memory_highwater, total)
@@ -269,17 +362,26 @@ class BotRunner:
 
     def _readiness(self):
         for venue, options in self.config['feeds'].items():
-            values = [self._market_ready(f'{venue}:{market}') for market in options['markets']]
+            identities = [f'{venue}:{market}' for market in options['markets']]
+            if 'rolling' in self.config:
+                identities = [key for slot in self.slots for key in slot.entry['required_markets']
+                              if key.startswith(venue+':')]
+            values = [self._market_ready(identity) for identity in identities]
+            if 'rolling' in self.config and not identities:
+                values = [(False,'awaiting matching current window')]
             self._status['venues'][venue] = dict(ready=all(ready for ready, _ in values),
                 reason=next((reason for ready, reason in values if not ready), ''))
         all_ready = all(value['ready'] for value in self._status['venues'].values())
-        if all_ready and not self._initial_ready:
+        if (all_ready or self._discovery_ready) and not self._initial_ready:
             self._initial_ready = True
             self._dirty = True
             self._control('startup_ready', revision=self._revision)
         for slot in self.slots:
             values = [self._market_ready(identity) for identity in slot.entry['required_markets']]
             ready = self._initial_ready and not slot.disabled and all(value[0] for value in values)
+            if 'rolling' in self.config:
+                ready = (ready and bool(values) and not self._rolling_paused
+                         and not any(key in self._fee_blocked for key in slot.entry['required_markets']))
             reason = slot.reason if slot.disabled else next((reason for okay, reason in values if not okay), '')
             if not self._initial_ready and not reason:
                 reason = 'awaiting all initial subscriptions'
@@ -519,6 +621,10 @@ class BotRunner:
                     self._session.publish(payload)
                 elif kind == 'market':
                     await self._session.add_market(payload)
+                elif kind == 'windows':
+                    await self._install_windows(**payload)
+                elif kind == 'windows_error':
+                    self._control('discovery_error', reason=payload)
                 elif self.runtime['source'] == 'public':
                     raise RuntimeError(f'Public producer {payload} ended unexpectedly')
                 else:
@@ -534,6 +640,8 @@ class BotRunner:
         self._readiness()
         if allow_work:
             await self._complete()
+            self._activate_window()
+            self._readiness()
             await self._notify_and_dispatch()
 
     async def _cancel_orders(self, strategy=None, *, entries_only=False, portfolio=None):
@@ -700,6 +808,8 @@ class BotRunner:
                     raise ValueError('Strategy factory must return an async on_snapshot implementation')
             self._tasks = [asyncio.create_task(callback(feed))
                            for feed in self.feeds for callback in (self._collect, self._refresh)]
+            if 'rolling' in self.config:
+                self._tasks.append(asyncio.create_task(self._discover()))
             # Transfer control to every newly owned producer before checking
             # deadlines that setup may already have consumed. Even an empty
             # driver pass can complete without yielding; cancelling an unstarted
