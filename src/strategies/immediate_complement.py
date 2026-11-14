@@ -197,8 +197,10 @@ class ImmediateComplementStrategy:
         positions = account.strategy_positions.get(self.context.strategy_name, {})
         keys = [':'.join(leg) for leg in self.active['legs']]
         sizes = [dec(positions[key].size) if key in positions else Decimal(0) for key in keys]
-        matched = min(sizes)
-        if sizes[0] == sizes[1]:
+        pair = account.complement_pairs.get(self.active['batch_id'])
+        matched = dec(min(pair['fills'])) if pair else min(sizes)
+        excesses = [max(Decimal(0), size-matched) for size in sizes]
+        if not any(excesses):
             self.last_reason = 'holding_pair' if matched else 'attempt_complete'
             self.active = None
             return None
@@ -206,7 +208,7 @@ class ImmediateComplementStrategy:
         if (self.context.now() > self.active['recovery_end']
                 or self.active['attempts'] >= self.options['recovery_attempts']):
             return None
-        index = 0 if sizes[0] > sizes[1] else 1
+        index = 0 if excesses[0] > excesses[1] else 1
         venue, market_id, outcome = self.active['legs'][index]
         book = snapshot.orderbooks.get(keys[index])
         market = snapshot.markets.get(f'{venue}:{market_id}')
@@ -216,7 +218,7 @@ class ImmediateComplementStrategy:
         self.active['attempts'] += 1
         return [self.context.new_intent(exchange=venue, market_id=market_id, outcome=outcome,
             side=Side.SELL, price=max(book.bids), tif=TimeInForce.IOC, reduce_only=True,
-            close_fraction=float((sizes[index]-matched)/sizes[index]), reason='complement_recovery')]
+            close_fraction=float(excesses[index]/sizes[index]), reason='complement_recovery')]
 
     async def on_shutdown(self, snapshot):
         return self._recover(snapshot) if self.active is not None else None

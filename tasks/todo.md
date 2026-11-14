@@ -91,7 +91,7 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T06b: Keep recovery settlement-aware
 
-- [ ] Reconcile only unmatched inventory when a confirmed pair has one settled venue; never sell its remaining matched holding.
+- [x] Reconcile only unmatched inventory when a confirmed pair has one settled venue; never sell its remaining matched holding.
 - Verify with an authoritative settlement before the next strategy timer.
 - Dependencies: T06a.
 - Files: strategy and recovery tests.

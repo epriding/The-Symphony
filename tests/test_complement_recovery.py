@@ -119,3 +119,19 @@ async def test_opted_in_strategy_receives_timer_notifications_without_new_books(
         await stop_and_join(runner, task)
     finally:
         await dispose(task)
+
+
+@pytest.mark.asyncio
+async def test_partial_settlement_before_next_callback_never_sells_matched_remainder():
+    from src.utilities.market_events import SettlementEvent
+    from test_paper_trading import envelope
+    session, strategy = await configured(slow_b=False)
+    await step(session,strategy)
+    await session.advance(START+.05)
+    session.publish(envelope(session, SettlementEvent(exchange='A',market_id='m',
+        timestamp=START+.1,settlement_id='a',payouts={'YES':'1','NO':'0'}), START+.1))
+    await session.advance(START+.15)
+    assert await strategy.on_snapshot(session.state._snapshot()) is None
+    assert 'B:m:NO' in session.state.portfolios['PAPER'].positions
+    assert len(session.engine.orders) == 2
+    await session.finish()
