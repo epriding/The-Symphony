@@ -25,7 +25,7 @@
   "execution": {
     "seed": 7,
     "session_id": "complement-paper",
-    "assumptions": "Paper-only example; latency is illustrative and unmeasured. US retail coefficient .095 and Kalshi quadratic .07 with cent cash precision; no rebates assumed. Whole-contract sizing is conservative. Matching normal BRTI terms do not guarantee combined settlement.",
+    "assumptions": "Paper-only example; latency is illustrative and unmeasured. US retail coefficient .095 and Kalshi quadratic .07 with cent cash precision; no rebates assumed. Whole-contract candidates use native fractional fill precision. Matching normal BRTI terms do not guarantee combined settlement.",
     "processing_delay": {
       "seconds": 0.005,
       "jitter": 0.002

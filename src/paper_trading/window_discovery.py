@@ -67,8 +67,10 @@ def normalize_window(venue, raw):
     if (end-start != 900 or start % 900 or (threshold is not None
             and (threshold <= 0 or threshold != threshold.quantize(Decimal('.01'))))):
         raise ValueError('Invalid 15m window/threshold')
-    market = market_metadata(venue, raw, dict(tick_size=tick, quantity_step=1,
-        min_quantity=max(1,float(raw.get('minimumTradeQty',1))), category='crypto'))
+    # Native depth/fills can be fractional even when the strategy selects whole
+    # contracts. Preserve native precision for book admission, exits, and fees.
+    market = market_metadata(venue, raw, dict(tick_size=tick, quantity_step='.01',
+        min_quantity=max(.01,float(raw.get('minimumTradeQty',.01))), category='crypto'))
     return WindowMarket(market, subscription,
         ('BTC','BRTI',start,end,str(threshold.quantize(Decimal('.01'))) if threshold is not None else 'pending','2','gte','mean60'),
         raw.get('event_ticker',''), str(raw['feeCoefficient']) if 'feeCoefficient' in raw else None)

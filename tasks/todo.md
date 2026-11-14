@@ -228,6 +228,13 @@ Task completion requires its acceptance checks and verification, not just source
 - Verify: rolling/discovery/replay integration, full suite, compilation.
 - Files: runtime, discovery, session, rolling/discovery tests (five implementation files).
 
+## T07b: Preserve native fractional public-depth precision
+
+- [x] Accept saved real Kalshi/US fractional books using native 0.01-contract precision and minima. Keep conservative whole-contract candidate increments separate from native fill/exit precision and fee fragmentation bounds.
+- Review found that whole-contract metadata would reject real fractional book levels. The regression now runs both saved production book shapes through the real book validator and checks the independent fee-fragment bound.
+- Verify: precision, candidate, integration, full regression, compilation.
+- Files: discovery, strategy, example assumptions, precision tests.
+
 ## T14: Document and exercise live paper operation
 
 - [ ] Complete T14.

@@ -23,6 +23,7 @@ class LegQuote:
     timestamp: float
     fees: FeeSchedule
     terms_key: tuple = ()
+    selection_step: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class PairCandidate:
 
 def _common_step(legs):
     steps = [Fraction(leg.quantity_step) for leg in legs]
+    steps.extend(Fraction(leg.selection_step) for leg in legs if leg.selection_step is not None)
     denominator = lcm(*(step.denominator for step in steps))
     units = lcm(*(step.numerator * (denominator // step.denominator) for step in steps))
     return Decimal(units) / Decimal(denominator)
@@ -78,6 +80,7 @@ def evaluate_pair(legs, *, now, max_spend, min_profit, max_quantity,
         if not leg.asks:
             return None, 'missing_depth'
         if (dec(leg.quantity_step) <= 0 or dec(leg.min_quantity) <= 0 or dec(leg.cash) < 0
+                or (leg.selection_step is not None and dec(leg.selection_step) <= 0)
                 or leg.outcome not in ('YES', 'NO')
                 or any(not 0 < dec(price) < 1 or dec(size) <= 0 for price, size in leg.asks)):
             return None, 'invalid_depth'
@@ -168,7 +171,8 @@ class ImmediateComplementStrategy:
                 quotes.append(LegQuote(venue, market_id, outcome,
                     tuple((dec(p), dec(q)) for p, q in book.asks.items()),
                     dec(market.quantity_step), dec(market.min_quantity), cash,
-                    book.timestamp, rules.fee_schedule(market_id, self.context.now()), terms))
+                    book.timestamp, rules.fee_schedule(market_id, self.context.now()), terms,
+                    selection_step=Decimal(1)))
             if len(quotes) != 2:
                 continue
             candidate, self.last_reason = evaluate_pair(quotes, now=self.context.now(),
