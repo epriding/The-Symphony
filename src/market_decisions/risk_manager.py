@@ -479,6 +479,15 @@ class RiskManager:
         return RiskDecision(True, "approved", [order], sizing or {}, limiting_budget)
 
     def evaluate_batch(self, batch: OrderIntentBatch, snapshot: Snapshot):
+        if batch.min_net_profit_per_pair is not None and (
+                not finite(batch.min_net_profit_per_pair) or not 0 < batch.min_net_profit_per_pair < 1
+                or not finite(batch.max_quantity) or batch.max_quantity <= 0
+                or len(batch.legs) != 2 or batch.quantity_ratios != [1, 1]
+                or {leg.outcome for leg in batch.legs} != {'YES', 'NO'}
+                or not batch.market_equivalence):
+            return self._reject('invalid_complement_pair')
+        if batch.max_quantity is not None and (not finite(batch.max_quantity) or batch.max_quantity <= 0):
+            return self._reject('invalid_batch_quantity')
         if (not batch.batch_id or not batch.legs or len(batch.legs) != len(batch.quantity_ratios)
                 or len({o.intent_id for o in batch.legs}) != len(batch.legs)
                 or any(type(r) is not int or r <= 0 for r in batch.quantity_ratios)
@@ -508,6 +517,8 @@ class RiskManager:
             batch.capital_ceiling / cost_per_group,
             *(order.size / ratio for order, ratio in zip(leg_limits, batch.quantity_ratios)),
         )
+        if batch.max_quantity is not None:
+            max_scale = min(max_scale, batch.max_quantity)
         exposure = self.get_exposure(snapshot)
         portfolio = snapshot.portfolios[self.portfolio_id]
         equity = self.equity(snapshot)
@@ -552,6 +563,13 @@ class RiskManager:
             projected.portfolios[self.portfolio_id].reservations[order.intent_id] = order
         if sum(order.commitment for order in orders) > batch.capital_ceiling + 1e-9:
             return self._reject("batch_fee_budget")
+        if batch.min_net_profit_per_pair is not None:
+            quantity = Decimal(str(orders[0].size))
+            cost = sum(Decimal(str(order.price)) * Decimal(str(order.size))
+                       + Decimal(str(order.fee_reserve if order.fee_reserve is not None
+                                     else order.size * order.fee_per_contract)) for order in orders)
+            if quantity - cost < quantity * Decimal(str(batch.min_net_profit_per_pair)):
+                return self._reject('pair_edge_erased_by_sizing')
         return RiskDecision(True, "approved", orders, {"scale": float(scale)}, "group_budget")
 
     def _batch_scale_increment(self, batch, leg_limits, snapshot) -> Fraction:

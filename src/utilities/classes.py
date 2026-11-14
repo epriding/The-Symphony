@@ -269,6 +269,8 @@ class OrderIntentBatch:
     execution_deadline: Optional[float] = None
     dispatch_policy: str = "concurrent"
     market_equivalence: str = ""
+    max_quantity: Optional[float] = None
+    min_net_profit_per_pair: Optional[float] = None
 
 
 TERMINAL_ORDER_STATUSES = frozenset({

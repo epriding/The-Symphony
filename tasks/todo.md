@@ -31,12 +31,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T03: Preserve net edge during risk approval
 
-- [ ] Implement T03.
+- [x] Implement T03.
 - Description: Ensure linked sizing and reservations preserve pair economics at the final approved quantity.
 - Acceptance:
-  - [ ] Risk checks both legs against shared exposure limits and each exchange's cash; resizes on a common grid or rejects the entire pair before dispatch.
-  - [ ] Recalculate net surplus and fee bounds at final size and approved price caps; reject edge erased by rounding/resizing. Do not invent probability 1 for either directional leg to bypass sizing.
-  - [ ] Fresh dispatch checks reject expired decisions, stale quotes, or insufficient funds; rejected pairs leave no orphan reservations or partial submissions.
+  - [x] Risk checks both legs against shared exposure limits and each exchange's cash; resizes on a common grid or rejects the entire pair before dispatch.
+  - [x] Recalculate net surplus and fee bounds at final size and approved price caps; reject edge erased by rounding/resizing. Do not invent probability 1 for either directional leg to bypass sizing.
+  - [x] Fresh dispatch checks reject expired decisions, stale quotes, or insufficient funds; rejected pairs leave no orphan reservations or partial submissions.
 - Verify: `python3 -m pytest -q tests/test_complement_risk.py tests/test_risk_manager.py tests/test_order_lifecycle.py`.
 - Dependencies: T01, T02.
 - Likely files: `src/market_decisions/risk_manager.py`, `src/market_decisions/order_coordinator.py`, `src/utilities/classes.py`, `tests/test_complement_risk.py`.
@@ -44,9 +44,9 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## Checkpoint A: Candidate to approved pair
 
-- [ ] Gross/net fee examples and stale-data rejection pass through the actual gateway.
-- [ ] Full tests and source compilation pass; existing single-order strategies remain compatible.
-- [ ] Review the candidate/approval trace before enabling any public strategy.
+- [x] Gross/net fee examples and stale-data rejection pass through the actual gateway.
+- [x] Full tests and source compilation pass; existing single-order strategies remain compatible.
+- [x] Review the candidate/approval trace before enabling any public strategy.
 
 ## T04: Recover independently failed legs
 

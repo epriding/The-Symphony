@@ -363,6 +363,11 @@ class BotRunner:
                         or item.execution_policy != 'paper_independent_legs'
                         or item.dispatch_policy not in ('concurrent', 'sequential')
                         or not finite(item.execution_deadline)
+                        or (item.max_quantity is not None and
+                            (not finite(item.max_quantity) or item.max_quantity <= 0))
+                        or (item.min_net_profit_per_pair is not None and
+                            (not finite(item.min_net_profit_per_pair)
+                             or not 0 < item.min_net_profit_per_pair < 1))
                         or (item.expires_at is not None and not finite(item.expires_at))):
                     raise ValueError('Malformed strategy batch')
                 batch_ids.add(item.batch_id)
