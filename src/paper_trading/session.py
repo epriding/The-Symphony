@@ -108,7 +108,6 @@ class PaperSession:
         key, identity = f'{exchange}:{market_id}', (exchange,market_id)
         if key not in self.state.markets:
             return True
-        await self.engine.compact(force=True)
         async with self.coordinator.lock:
             relevant = {oid for oid,order in self.engine.orders.items()
                         if (order.approved.exchange,order.approved.market_id)==identity}
@@ -134,6 +133,14 @@ class PaperSession:
                 market = deepcopy(self.state.markets[key])
             store = self.state.history_store
             if store:
+                # Only successful retirement has a recorded input. A refused
+                # attempt must not introduce a hidden archival boundary.
+                try:
+                    await self.state.compact_history(force=True)
+                    await self.engine._compact_engine(force=True)
+                except BaseException:
+                    self.engine.history_failed = True
+                    raise
                 def commit(conn):
                     store._put(conn,'retired_markets',identity,dict(market=market,not_before=not_before))
                     conn.commit()

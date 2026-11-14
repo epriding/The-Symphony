@@ -134,3 +134,58 @@ async def test_background_discovery_rolls_three_windows_without_manual_market_co
         await stop_and_join(runner,task)
         assert len(seen)==3
     finally:await dispose(task)
+
+
+@pytest.mark.asyncio
+async def test_loss_of_current_term_match_immediately_blocks_old_context_entry():
+    runner,_=await setup_runner()
+    try:
+        await runner._install_windows([payload()],{});await books(runner,payload())
+        runner._activate_window();runner._readiness()
+        assert runner.status['strategies']['one']['ready']
+        await runner._install_windows([],{'opening_threshold_unavailable_or_different':1})
+        runner._readiness()
+        assert not runner.status['strategies']['one']['ready']
+    finally:await runner._session.finish()
+
+
+@pytest.mark.asyncio
+async def test_changed_terms_on_same_market_ids_update_context_before_entry():
+    runner,_=await setup_runner()
+    try:
+        await runner._install_windows([payload()],{});await books(runner,payload())
+        runner._activate_window()
+        changed=payload()
+        for row in changed:row['terms'][4]='101.00'
+        await runner._install_windows([changed],{})
+        runner._readiness()
+        assert not runner.status['strategies']['one']['ready']
+        runner._activate_window();runner._readiness()
+        assert all(terms[4]=='101.00' for terms in runner.slots[0].context.settings['terms'].values())
+        assert runner.status['strategies']['one']['ready']
+    finally:await runner._session.finish()
+
+
+@pytest.mark.asyncio
+async def test_refused_retirement_cannot_add_unrecorded_archival_boundary(tmp_path):
+    from src.paper_trading.history import HistoryStore
+    runner,clock=await setup_runner();await runner._session.finish()
+    store=HistoryStore(tmp_path/'archive',limits=runner.limits)
+    runner._session=PaperSession(trading_config(runner.config),runner.clock,history_store=store,limits=runner.limits)
+    try:
+        rows=payload();await runner._install_windows([rows],{})
+        for i,row in enumerate(rows):
+            m=row['market'];bid,ask=(.39,.4) if i==0 else (.5,.51);now=clock()
+            runner._session.publish(PublicEventEnvelope(event=OrderBookSnapshotEvent(m.market_id,'YES',now,m.exchange,{bid:100},{ask:100}),
+                received_at=now,available_at=now,ingest_index=i+1,source_id=f'book{i}'))
+        await runner._session.advance(clock());runner._activate_window()
+        strategy=runner.slots[0].strategy;strategy.options['max_quantity']='1'
+        batch=(await strategy.on_snapshot(runner._session.state._snapshot()))[0]
+        await runner._session.submit_batch(batch);await runner._session.advance(clock())
+        clock.advance(clock()+.1);await runner._session.advance(clock())
+        assert runner._session.state.portfolios['PAPER'].positions
+        before=await store.acontains('group_ids',batch.batch_id)
+        assert not await runner._session.retire_market(rows[0]['market'].exchange,'m0',not_before=0)
+        assert await store.acontains('group_ids',batch.batch_id)==before
+    finally:
+        await runner._session.finish();await store.aclose()

@@ -70,13 +70,26 @@ def normalize_window(venue, raw):
     market = market_metadata(venue, raw, dict(tick_size=tick, quantity_step=1,
         min_quantity=max(1,float(raw.get('minimumTradeQty',1))), category='crypto'))
     return WindowMarket(market, subscription,
-        ('BTC','BRTI',start,end,str(threshold) if threshold is not None else 'pending','2','gte','mean60'),
+        ('BTC','BRTI',start,end,str(threshold.quantize(Decimal('.01'))) if threshold is not None else 'pending','2','gte','mean60'),
         raw.get('event_ticker',''), str(raw['feeCoefficient']) if 'feeCoefficient' in raw else None)
 
 
 def match_windows(windows, *, now):
     grouped, reasons = defaultdict(lambda: defaultdict(list)), Counter()
+    unique, conflicts, conflicted_windows = {}, set(), set()
     for window in windows:
+        identity = (window.market.exchange,window.market.market_id)
+        if identity in unique and unique[identity] != window:
+            conflicts.add(identity)
+            for version in (unique[identity],window):
+                conflicted_windows.add(version.terms[:4]+version.terms[5:])
+        else:
+            unique[identity] = window
+    if conflicts:
+        reasons['conflicting_metadata'] += len(conflicts)
+    for identity,window in unique.items():
+        if identity in conflicts or window.terms[:4]+window.terms[5:] in conflicted_windows:
+            continue
         if window.terms[3] <= now or window.terms[2] > (int(now)//900+1)*900:
             continue
         grouped[window.terms[:4]+window.terms[5:]][window.market.exchange].append(window)

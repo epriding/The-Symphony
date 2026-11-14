@@ -314,10 +314,11 @@ class BotRunner:
         if not all(self._market_ready(key)[0] and key not in self._fee_blocked for key in required):
             return
         for slot in self.slots:
-            if slot.disabled or slot.task is not None or slot.entry['required_markets'] == required:
-                continue
             markets = {row['market'].exchange:row['market'].market_id for row in pair}
             terms = {row['market'].exchange:list(row['terms']) for row in pair}
+            if (slot.disabled or slot.task is not None or
+                    (slot.entry['required_markets']==required and slot.context.settings.get('terms')==terms)):
+                continue
             slot.entry['required_markets'] = required
             slot.context.settings.update(markets=markets, terms=terms)
             slot.pending = True
@@ -400,6 +401,10 @@ class BotRunner:
             if 'rolling' in self.config:
                 identities = [key for slot in self.slots for key in slot.entry['required_markets']
                               if key.startswith(venue+':')]
+                if not self.slots:
+                    identities = [f"{row['market'].exchange}:{row['market'].market_id}"
+                        for pair in self._windows for row in pair
+                        if row['market'].exchange==venue and pair[0]['terms'][2]<=self.clock()<pair[0]['terms'][3]]
             values = [self._market_ready(identity) for identity in identities]
             if 'rolling' in self.config and not identities:
                 values = [(False,'awaiting matching current window')]
@@ -413,15 +418,29 @@ class BotRunner:
         for slot in self.slots:
             values = [self._market_ready(identity) for identity in slot.entry['required_markets']]
             ready = self._initial_ready and not slot.disabled and all(value[0] for value in values)
+            reason = slot.reason if slot.disabled else next((reason for okay, reason in values if not okay), '')
             if 'rolling' in self.config:
                 ready = (ready and bool(values) and not self._rolling_paused
                          and not any(key in self._fee_blocked for key in slot.entry['required_markets']))
-            reason = slot.reason if slot.disabled else next((reason for okay, reason in values if not okay), '')
+                current = next((pair for pair in self._windows if
+                    pair[0]['terms'][2] <= self.clock() < pair[0]['terms'][3]),None)
+                expected = {row['market'].exchange:list(row['terms']) for row in current} if current else {}
+                expected_keys = [f"{row['market'].exchange}:{row['market'].market_id}" for row in current] if current else []
+                eligible = (current is not None and current[0]['terms']==current[1]['terms']
+                    and current[0]['terms'][4]!='pending'
+                    and slot.entry['required_markets']==expected_keys
+                    and slot.context is not None and slot.context.settings.get('terms')==expected)
+                ready = ready and eligible
+                if not eligible and not slot.disabled:
+                    reason = 'awaiting current matching terms and activation'
+                elif self._rolling_paused:
+                    reason = 'retained obligations occupy market capacity'
             if not self._initial_ready and not reason:
                 reason = 'awaiting all initial subscriptions'
             self._status['strategies'][slot.entry['name']] = dict(ready=ready, reason=reason)
         if not self._stopping:
-            degraded = self._initial_ready and (not all_ready or any(slot.disabled for slot in self.slots))
+            degraded = self._initial_ready and (not all_ready or any(
+                not self._status['strategies'][slot.entry['name']]['ready'] for slot in self.slots))
             self._status['phase'] = 'degraded' if degraded else 'ready' if self._initial_ready else 'starting'
             self._status['reason'] = ('one or more strategies or venues unavailable' if degraded else
                                       '' if self._initial_ready else 'awaiting all initial subscriptions')

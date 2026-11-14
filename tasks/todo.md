@@ -220,6 +220,14 @@ Task completion requires its acceptance checks and verification, not just source
 - During T13, fixed attribution of central risk exits to complementary recovery fees and blocked early future-window entry; these minimal fixes add session/history/strategy to this task (five implementation files total).
 - Estimated scope: medium, five files including the synthetic fixture and integration tests.
 
+## T08c: Revalidate rolling eligibility and preserve replay boundaries
+
+- [x] Block entries immediately when the current match disappears or terms change; refresh same-ID contexts only after callbacks finish. Normalize decimal thresholds, deduplicate identical canonical metadata, and reject conflicting duplicates.
+- [x] Refused retirement does not force unrecorded compaction; successful retirement preserves a reproducible archive boundary.
+- Added after review reproduced stale-context eligibility and a rolling replay hash mismatch.
+- Verify: rolling/discovery/replay integration, full suite, compilation.
+- Files: runtime, discovery, session, rolling/discovery tests (five implementation files).
+
 ## T14: Document and exercise live paper operation
 
 - [ ] Complete T14.

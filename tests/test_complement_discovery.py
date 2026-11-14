@@ -1,5 +1,6 @@
 import json
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 import pytest
 from src.paper_trading.window_discovery import normalize_window, match_windows, discover_windows
@@ -40,7 +41,8 @@ def test_missing_or_different_terms_never_admit_similar_titles(change):
 
 def test_ambiguous_counterpart_rejected_and_future_prepared_separately():
     k = normalize_window('KALSHI',raw('KALSHI')); p = normalize_window('POLYMARKET_US',raw('POLYMARKET_US'))
-    assert not match_windows([k,p,p],now=k.terms[2])[0]
+    other=replace(p,market=replace(p.market,market_id='other-us-market'))
+    assert not match_windows([k,p,other],now=k.terms[2])[0]
     assert len(match_windows([k,p],now=k.terms[2]-100)[0]) == 1
     assert not match_windows([k,p],now=k.terms[3])[0]
 
@@ -97,3 +99,19 @@ async def test_subscription_update_is_bounded_and_requests_resnapshot():
             assert feed.markets == ['b']
         finally:
             if hasattr(feed,'aclose'): await feed.aclose()
+
+
+def test_equivalent_decimal_thresholds_and_repeated_page_members_deduplicate():
+    k=normalize_window('KALSHI',raw('KALSHI'))
+    source=raw('POLYMARKET_US');source['assetPriceTerms']['priceToBeat']['value']='68209.620'
+    p=normalize_window('POLYMARKET_US',source)
+    pairs,reasons=match_windows([k,p,p],now=k.terms[2]+1)
+    assert len(pairs)==1 and not reasons
+
+
+def test_conflicting_duplicate_metadata_blocks_the_whole_affected_window():
+    k=normalize_window('KALSHI',raw('KALSHI'))
+    p=normalize_window('POLYMARKET_US',raw('POLYMARKET_US'))
+    conflict=replace(k,terms=k.terms[:4]+('101.00',)+k.terms[5:])
+    other=replace(k,market=replace(k.market,market_id='other-kalshi-market'))
+    assert not match_windows([k,conflict,other,p],now=k.terms[2]+1)[0]
