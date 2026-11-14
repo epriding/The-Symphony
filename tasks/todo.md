@@ -5,12 +5,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T01: Price a candidate pair after fees
 
-- [ ] Implement T01.
+- [x] Implement T01.
 - Description: Add the pure, bounded candidate evaluator for equal-quantity complementary purchases, using actual ask depth and the existing fee model.
 - Acceptance:
-  - [ ] Evaluate both cross-exchange orientations using decimal depth costs, valid quantity grids, price bounds, and separate available funds; reject missing/stale/skewed books and incompatible normal terms.
-  - [ ] Reuse `FeeModel`/reserves for both venues. Admit only surplus above the configured net threshold; correctly reject gross-positive/net-negative and fee-rounding boundary cases without relying on rebates.
-  - [ ] Bound quantity candidates, choose deterministically, and expose stable skip reasons; matching terms are the paper premise, not an unconditional payout certification.
+  - [x] Evaluate both cross-exchange orientations using decimal depth costs, valid quantity grids, price bounds, and separate available funds; reject missing/stale/skewed books and incompatible normal terms.
+  - [x] Reuse `FeeModel`/reserves for both venues. Admit only surplus above the configured net threshold; correctly reject gross-positive/net-negative and fee-rounding boundary cases without relying on rebates.
+  - [x] Bound quantity candidates, choose deterministically, and expose stable skip reasons; matching terms are the paper premise, not an unconditional payout certification.
 - Verify: `python3 -m pytest -q tests/test_complement_quotes.py`; use production-shaped fixtures plus independently calculated decimal fee examples and resized quantities.
 - Dependencies: none.
 - Likely files: `src/strategies/immediate_complement.py`, `src/paper_trading/fees.py` only if a reusable public helper is needed, `tests/test_complement_quotes.py`.
