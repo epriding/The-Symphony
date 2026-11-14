@@ -1,5 +1,5 @@
 """Execution diagnostics never supply prices to matching or risk decisions."""
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import asdict
 from decimal import Decimal
 from pathlib import Path
@@ -284,6 +284,34 @@ class BoundedReporter(Reporter):
         self.markouts = {}
         self.pending_markouts = []
         self._observation_signature = None
+        self._complement_controls = deque()
+
+    def note_control(self, payload):
+        action = payload.get('action')
+        if action not in ('completion','discovery','window_activation','window_retirement','daily_stop'):
+            return
+        if action == 'completion' and not payload.get('reason'):
+            return
+        row = {key:payload[key] for key in ('action','strategy','reason','windows','reasons',
+            'markets','exchange','market_id','portfolio','day','overshoot') if key in payload}
+        row.update(kind='complement_control',timestamp=self.engine.clock())
+        self._note_complement(row)
+
+    def note_rejection(self, batch, result):
+        if batch.min_net_profit_per_pair is not None and not result.decision.approved:
+            self._note_complement(dict(kind='complement_rejection',batch_id=batch.batch_id,
+                reason=result.decision.reason,strategy=batch.legs[0].strategy if batch.legs else '',timestamp=self.engine.clock()))
+
+    def _note_complement(self, row):
+        if len(self._complement_controls) >= self.engine.config.max_pending_events:
+            raise BufferError('Complement report capacity exceeded')
+        self._complement_controls.append(row)
+
+    def _flush_complement(self, conn):
+        for row in self._complement_controls:
+            self.history_store._append(conn,'groups',row)
+        conn.commit()
+        self._complement_controls.clear()
 
     def observe(self):
         # The session's bounded async seam invokes observe_async after committing
@@ -318,6 +346,8 @@ class BoundedReporter(Reporter):
 
     async def observe_async(self, *, force=False):
         store = self.history_store
+        if self._complement_controls:
+            await store.run(self._flush_complement)
         now = self.engine.clock()
         books = []
         for (exchange, market), pool in self.engine.books.items():
@@ -432,11 +462,14 @@ class BoundedReporter(Reporter):
                 open_positions=len(portfolio.positions), open_orders=len(portfolio.open_orders),
                 pending_reservations=len(portfolio.reservations),
                 reserved_cash=sum(order.commitment for order in portfolio.pending_orders),
-                liquidation=[self._liquidation_estimate(position, state) for position in portfolio.positions.values()])
+                liquidation=[self._liquidation_estimate(position, state) for position in portfolio.positions.values()],
+                daily=dict(day=portfolio.daily_day,start_equity=portfolio.daily_start_equity,
+                    halted=portfolio.daily_halted,loss=portfolio.daily_loss,overshoot=portfolio.daily_overshoot))
         return accounts
 
     def _summary_data(self, conn):
         store = self.history_store
+        self._flush_complement(conn)
         self._flush_markouts(conn, force=True)
         # Every historical total is updated atomically with its underlying row.
         # Finalization reads a bounded number of aggregates, not past fills.
@@ -445,7 +478,8 @@ class BoundedReporter(Reporter):
             credits={pid: store._get(conn, '_summary', ('credits', pid), Decimal(0))
                      for pid in self.engine.coordinator.state.portfolios},
             missing=conn.execute('SELECT COUNT(*) FROM pending_marks').fetchone()[0],
-            markouts=store._count(conn, 'markouts'), details=store._detail_references(conn))
+            markouts=store._count(conn, 'markouts'), details=store._detail_references(conn),
+            complement=store._get(conn,'_summary','complement',{}))
 
     def _summary_value(self, state, data):
         orders = data['orders']
@@ -454,11 +488,25 @@ class BoundedReporter(Reporter):
                   for venue in self.engine.config.venues}
         strategies = {name: dict(orders=value['orders'], statuses={key: count for key, count in value['statuses'].items() if count})
                       for name, value in orders.get('strategies', {}).items()}
+        complement = {key:str(value) if isinstance(value,Decimal) else value
+                      for key,value in data['complement'].items()}
+        portfolios = [p for p in state.portfolios.values() if p.paper]
+        complement.update(realized_net_pnl=sum(p.realized_pnl for p in portfolios),
+            held_capital=sum(pos.size*pos.entry_price for p in portfolios for pos in p.positions.values()),
+            unresolved_positions=sum(len(p.positions) for p in portfolios),
+            balances={pid:{venue:dict(cash=balances['USD'].cash,
+                available_cash=state.risk_managers[pid].available_cash(p,venue),
+                reserved_cash=sum(o.commitment for o in p.pending_orders if o.exchange==venue))
+                for venue,balances in p.balances.items()} for pid,p in state.portfolios.items() if p.paper},
+            settlement_assumption='Matching normal terms are a paper premise; actual venue payouts are credited independently',
+            discovery_count_semantics='Matched-window observations count each discovery poll; activations are unique windows',
+            detail_stream='groups.jsonl')
         return dict(session_id=self.engine.config.session_id, assumptions=self.engine.config.assumptions,
             counts={key: count for key, count in orders.get('counts', {}).items() if count},
             submitted=orders.get('submitted', 0), full_fills=orders.get('full', 0),
             partial_fills=orders.get('partial', 0), zero_fills=orders.get('zero', 0),
             executions=execution_count, **execution,
+            complement=complement,
             accounts=self._bounded_accounts(state, account, data['credits']),
             diagnostics=dict(self.engine.diagnostics), markouts=dict(scope='full-session', records=data['markouts']),
             missing_markouts=data['missing'], peak_pending_events=self.engine.scheduler.peak_pending,

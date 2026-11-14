@@ -380,19 +380,51 @@ class PaperTradingEngine:
     def _update_group_exposure(self, order):
         group = self.groups.get(order.approved.batch_id)
         if group is None:
+            if order.approved.side == Side.SELL and order.approved.intent.reduce_only:
+                for group in self.groups.values():
+                    if group['batch'].min_net_profit_per_pair is None:
+                        continue
+                    for index,oid in enumerate(group['ids']):
+                        entry = self.orders[oid].approved
+                        if (entry.strategy,entry.exchange,entry.market_id,entry.outcome) != (
+                                order.approved.strategy,order.approved.exchange,order.approved.market_id,order.approved.outcome):
+                            continue
+                        prior = group['recovery_seen'].get(order.record.order_id,(Decimal(0),Decimal(0),Decimal(0)))
+                        group['reductions'][index] += order.filled-prior[0]
+                        group['recovery_fees'] += order.charged-prior[1]
+                        group['recovery_proceeds'] += order.notional-prior[2]
+                        group['recovery_seen'][order.record.order_id] = (order.filled,order.charged,order.notional)
+                        self._refresh_group_exposure(group)
             return
+        self._refresh_group_exposure(group)
+
+    def _refresh_group_exposure(self, group):
         filled_scales = [
             self.orders[order_id].filled / Decimal(ratio)
             for order_id, ratio in zip(group['ids'], group['batch'].quantity_ratios)
         ]
         unmatched = len(set(filled_scales)) > 1
+        if group['batch'].min_net_profit_per_pair is not None:
+            matched = min(filled_scales)
+            unmatched = any(max(Decimal(0),scale-reduction-matched)>0
+                            for scale,reduction in zip(filled_scales,group['reductions']))
         if unmatched and group['unmatched_since'] is None:
             group['unmatched_since'] = self.clock()
         elif not unmatched and group['unmatched_since'] is not None:
             group['unmatched_seconds'] += self.clock() - group['unmatched_since']
             group['unmatched_since'] = None
-        self.log('group_execution', batch_id=order.approved.batch_id,
+        self.log('group_execution', batch_id=group['batch'].batch_id,
                  filled_scales=[str(scale) for scale in filled_scales], unmatched=unmatched)
+
+    def settle_groups(self, exchange, market_id):
+        for group in self.groups.values():
+            if group['batch'].min_net_profit_per_pair is None:
+                continue
+            for index,oid in enumerate(group['ids']):
+                entry = self.orders[oid]
+                if (entry.approved.exchange,entry.approved.market_id)==(exchange,market_id):
+                    group['reductions'][index] = entry.filled
+            self._refresh_group_exposure(group)
 
     def _report(self, order, delay=0):
         order.record.revision += 1
@@ -595,7 +627,8 @@ class PaperTradingEngine:
 
     def register_group(self, batch, order_ids):
         self.groups[batch.batch_id] = dict(batch=batch, ids=list(order_ids), failed=False,
-                                          unmatched_since=None, unmatched_seconds=0.0)
+            unmatched_since=None, unmatched_seconds=0.0, reductions=[Decimal(0)]*len(order_ids),
+            recovery_seen={},recovery_fees=Decimal(0),recovery_proceeds=Decimal(0))
         if batch.dispatch_policy == 'sequential':
             for oid in order_ids[1:]:
                 self.orders[oid].phase = 'held'
@@ -603,7 +636,9 @@ class PaperTradingEngine:
             self.scheduler.schedule(batch.execution_deadline, Scheduler.CANCEL, self._group_deadline, batch.batch_id)
 
     def _group_deadline(self, batch_id):
-        group = self.groups[batch_id]
+        group = self.groups.get(batch_id)
+        if group is None or all(self.orders[oid].filled == dec(self.orders[oid].approved.size) for oid in group['ids']):
+            return
         group['failed'] = True
         for oid in group['ids']:
             if self.orders[oid].phase != 'terminal':
@@ -642,8 +677,19 @@ class PaperTradingEngine:
         if group['unmatched_since'] is not None:
             seconds += self.clock() - group['unmatched_since']
         return dict(kind='group', batch_id=batch_id, failed=group['failed'],
+            complement=group['batch'].min_net_profit_per_pair is not None,
+            equivalence=group['batch'].market_equivalence,
+            projected_surplus=(str(min(dec(self.orders[oid].approved.size) for oid in group['ids'])-
+                sum(dec(self.orders[oid].approved.commitment) for oid in group['ids']))
+                if group['batch'].min_net_profit_per_pair is not None else None),
+            entry_fees=str(sum(self.orders[oid].charged for oid in group['ids'])),
+            recovery_fees=str(group['recovery_fees']), recovery_proceeds=str(group['recovery_proceeds']),
             unmatched_seconds=seconds, legs=[dict(order_id=oid,
                 exchange=self.orders[oid].approved.exchange,
+                market_id=self.orders[oid].approved.market_id,
+                strategy=self.orders[oid].approved.strategy,outcome=self.orders[oid].approved.outcome,
+                window_end=self.orders[oid].approved.intent.resolution_date,
+                approved_quantity=str(self.orders[oid].approved.size),
                 filled_quantity=str(self.orders[oid].filled),
                 remaining_quantity=str(self.orders[oid].remaining),
                 status=self.orders[oid].record.status.value) for oid in group['ids']])
@@ -701,7 +747,9 @@ class PaperTradingEngine:
                 observed = await store.aget(f'orders:{order.approved.portfolio_id}', f'{order.approved.exchange}:{oid}')
             if observed is not None and observed.revision >= order.record.revision:
                 resolved.append(oid)
-        groups = [(bid, group) for bid, group in self.groups.items() if all(oid in resolved for oid in group['ids'])]
+        groups = [(bid, group) for bid, group in self.groups.items()
+                  if all(oid in resolved for oid in group['ids']) and
+                  (group['batch'].min_net_profit_per_pair is None or group['unmatched_since'] is None)]
         fills = list(self.executions)
         prints = list(self.seen_trades)
         timing = [(oid, self._timing(self.orders[oid])) for oid in resolved]
@@ -713,7 +761,9 @@ class PaperTradingEngine:
             for execution in fills:
                 if store._put(conn, 'execution_ids', execution.execution_id, True):
                     order = self.orders[execution.order_id]
-                    row = dict(kind='execution', portfolio_id=order.approved.portfolio_id, strategy=order.approved.strategy, **asdict(execution))
+                    row = dict(kind='execution', portfolio_id=order.approved.portfolio_id,
+                        strategy=order.approved.strategy, intent_reason=order.approved.intent.reason,
+                        batch_id=order.approved.batch_id, **asdict(execution))
                     store._append(conn, 'executions', row)
                     for horizon in self.config.markout_horizons:
                         identity = f'{execution.execution_id}:{horizon}'

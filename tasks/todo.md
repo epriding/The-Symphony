@@ -169,12 +169,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T11: Report complete experiment results
 
-- [ ] Implement T11.
+- [x] Implement T11.
 - Description: Add strategy-specific results to existing bounded summaries/detail streams.
 - Acceptance:
-  - [ ] Show projected/realized net returns, entry/recovery fees, paired/failed/unfilled attempts, unhedged duration, per-venue cash/reserves, unresolved inventory, and daily-stop/overshoot events.
-  - [ ] Attribute results to window/group IDs and record discovered/activated/skipped windows. Reconcile detail streams to full-session portfolio totals, including delayed settlements and corrections.
-  - [ ] Keep aggregate summaries bounded, retain existing artifact conventions, and state fee/latency/settlement assumptions. No-trade runs explain their skip reasons and remain valid results.
+  - [x] Show projected/realized net returns, entry/recovery fees, paired/failed/unfilled attempts, unhedged duration, per-venue cash/reserves, unresolved inventory, and daily-stop/overshoot events.
+  - [x] Attribute results to window/group IDs and record discovered/activated/skipped windows. Reconcile detail streams to full-session portfolio totals, including delayed settlements and corrections.
+  - [x] Keep aggregate summaries bounded, retain existing artifact conventions, and state fee/latency/settlement assumptions. No-trade runs explain their skip reasons and remain valid results.
 - Verify: `python3 -m pytest -q tests/test_complement_reporting.py tests/test_bot_summary_v1.py tests/test_bot_detail_streams_v1.py`.
 - Dependencies: T06, T09, T10.
 - Likely files: `src/paper_trading/reporting.py`, `src/paper_trading/history.py`, `tests/test_complement_reporting.py`.

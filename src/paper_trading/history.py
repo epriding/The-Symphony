@@ -431,7 +431,70 @@ class HistoryStore:
         conn.execute('INSERT INTO stream_counts VALUES (?,1) ON CONFLICT(stream) DO UPDATE SET records=records+1', (stream,))
         if stream == 'executions':
             self._update_execution_totals(conn, record)
+        if stream in ('executions','groups'):
+            self._update_complement_totals(conn,record)
         return sequence
+
+    def _update_complement_totals(self, conn, row):
+        kind = row.get('kind')
+        if ((kind == 'group' and not row.get('complement')) or
+                (kind == 'execution' and row.get('intent_reason') not in
+                 ('immediate_complement','complement_recovery'))):
+            return
+        totals = self._get(conn,'_summary','complement',dict(attempted=0,paired=0,failed=0,
+            unfilled=0,rejected=0,projected_surplus=Decimal(0),entry_fees=Decimal(0),
+            recovery_fees=Decimal(0),recovery_proceeds=Decimal(0),unhedged_seconds=0.0,
+            activated_windows=0,retired_markets=0,discovery_polls=0,
+            matched_window_observations=0,daily_stops=0,max_daily_overshoot=0.0,
+            decision_reasons={},discovery_skip_reasons={}))
+        if kind == 'group' and row.get('complement'):
+            totals['attempted'] += 1
+            fills = [Decimal(leg['filled_quantity']) for leg in row['legs']]
+            full = all(fill == Decimal(leg['approved_quantity']) for fill,leg in zip(fills,row['legs']))
+            totals['paired' if full else 'failed' if any(fills) else 'unfilled'] += 1
+            totals['projected_surplus'] += Decimal(row['projected_surplus'])
+            totals['unhedged_seconds'] += row['unmatched_seconds']
+        elif kind == 'complement_rejection':
+            if not self._put(conn,'complement_rejections',row['batch_id'],True):
+                return
+            totals['attempted'] += 1
+            totals['rejected'] += 1
+        elif kind == 'execution' and row.get('intent_reason') in ('immediate_complement','complement_recovery'):
+            role = 'entry' if row['side']=='BUY' else 'recovery'
+            self._put(conn,'complement_order_roles',(row['exchange'],row['order_id']),role)
+            totals[role+'_fees'] += Decimal(row['fee'])
+            if role == 'recovery':
+                totals['recovery_proceeds'] += Decimal(row['notional'])
+        elif kind == 'correction':
+            role = self._get(conn,'complement_order_roles',(row['exchange'],row['target_order_id']))
+            if role is None:
+                return
+            totals[role+'_fees'] += Decimal(row['fee_delta'])
+            if role == 'recovery':
+                totals['recovery_proceeds'] += Decimal(row['notional_delta'])
+        elif kind == 'complement_control':
+            action = row['action']
+            if action == 'completion':
+                reasons=totals['decision_reasons'];reason=row['reason']
+                if len(reasons)>=32 and reason not in reasons:reason='other'
+                reasons[reason]=reasons.get(reason,0)+1
+            elif action == 'discovery':
+                totals['discovery_polls'] += 1
+                totals['matched_window_observations'] += row['windows']
+                for reason,count in row['reasons'].items():
+                    reasons=totals['discovery_skip_reasons']
+                    if len(reasons)>=32 and reason not in reasons:reason='other'
+                    reasons[reason]=reasons.get(reason,0)+count
+            elif action in ('window_activation','window_retirement','daily_stop'):
+                identity = (action, row.get('strategy'), tuple(sorted(row.get('markets',{}).items())),
+                            row.get('exchange'),row.get('market_id'),row.get('portfolio'),row.get('day'))
+                if self._put(conn,'complement_control_ids',identity,True):
+                    totals[dict(window_activation='activated_windows',window_retirement='retired_markets',
+                                daily_stop='daily_stops')[action]] += 1
+                totals['max_daily_overshoot']=max(totals['max_daily_overshoot'],row.get('overshoot',0))
+        else:
+            return
+        self._put(conn,'_summary','complement',totals,True)
 
     def _update_order_totals(self, conn, old, row):
         totals = self._get(conn, '_summary', 'orders', dict(

@@ -175,6 +175,8 @@ class PaperSession:
         return OrderIntent(**values)
 
     def record(self, kind, payload):
+        if kind == 'runtime_control' and hasattr(self.reporter,'note_control'):
+            self.reporter.note_control(payload)
         if self.recorder:
             origin = "strategy" if self._strategy_event is not None else "driver"
             self.recorder.write(kind, self.clock(), payload, origin=origin, cause=self._strategy_event)
@@ -318,6 +320,7 @@ class PaperSession:
                 market.active = False
             self.state._refresh_performance()
         self.settled_markets.add(market_key)
+        self.engine.settle_groups(event.exchange,event.market_id)
         pool = self.engine.books.get(market_key)
         if pool:
             pool.invalidate("market_settled")
@@ -341,13 +344,32 @@ class PaperSession:
     async def submit(self, intent):
         self.record("intent", intent)
         result = await self.coordinator.submit(intent)
+        await self._remember_complement_roles(result)
         self.engine.log("risk_decision", intent_id=intent.intent_id, approved=result.decision.approved,
                         reason=result.decision.reason, status=result.status)
         return result
 
+    async def _remember_complement_roles(self, result):
+        store = self.state.history_store
+        if not store or not result.submission_ids:
+            return
+        rows = [(order.exchange,oid,'entry' if order.side.value=='BUY' else 'recovery')
+                for order,oid in zip(result.decision.orders,result.submission_ids)
+                if order.intent.reason in ('immediate_complement','complement_recovery')]
+        if rows:
+            def commit(conn):
+                for venue,oid,role in rows:
+                    store._put(conn,'complement_order_roles',(venue,oid),role)
+                conn.commit()
+            await store.run(commit)
+
     async def submit_batch(self, batch):
         self.record("batch", batch)
-        return await self.coordinator.submit_batch(batch)
+        result = await self.coordinator.submit_batch(batch)
+        await self._remember_complement_roles(result)
+        if hasattr(self.reporter,'note_rejection'):
+            self.reporter.note_rejection(batch,result)
+        return result
 
     async def _apply_cumulative_update(self, record):
         """Record a diagnostic private cumulative report before accounting it.
