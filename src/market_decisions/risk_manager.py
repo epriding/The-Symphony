@@ -149,6 +149,63 @@ class RiskManager:
             market_slots=frozenset(slots),
         )
 
+    def daily_equity(self, snapshot):
+        """Owned cash plus full fresh bid-depth proceeds, less exit fee reserves."""
+        portfolio = snapshot.portfolios[self.portfolio_id]
+        if self.equity(snapshot) is None:
+            return None
+        total = sum(Decimal(str(b.cash)) for currencies in portfolio.balances.values()
+                    for b in currencies.values())
+        for key, position in portfolio.positions.items():
+            book = snapshot.orderbooks.get(key)
+            market = snapshot.markets.get(f'{position.exchange}:{position.market_id}')
+            if (not book or not market or
+                    not 0 <= self.clock()-book.timestamp <= self.config.max_quote_age_seconds):
+                return None
+            remaining, proceeds = Decimal(str(position.size)), Decimal(0)
+            worst = None
+            for price, size in sorted(book.bids.items(), reverse=True):
+                if not finite(price) or not 0 <= price <= 1 or not finite(size) or size <= 0:
+                    return None
+                take = min(remaining, Decimal(str(size)))
+                proceeds += take * Decimal(str(price))
+                remaining -= take
+                worst = price
+                if not remaining:
+                    break
+            if remaining or worst is None:
+                return None
+            intent = OrderIntent(exchange=position.exchange, market_id=position.market_id,
+                outcome=position.outcome, strategy=position.strategy, side=Side.SELL,
+                price=worst, reduce_only=True)
+            fee = (self.fee_reserve_provider(intent, market, position.size, worst)
+                   if self.fee_reserve_provider else position.size*market.fee_per_contract)
+            total += proceeds-Decimal(str(fee))
+        return float(total)
+
+    def update_daily_risk(self, snapshot):
+        """Called under the ledger lock; snapshots may also be evaluated conservatively."""
+        if self.config.daily_loss_limit_pct is None:
+            return None
+        account = snapshot.portfolios[self.portfolio_id]
+        equity = self.daily_equity(snapshot)
+        if equity is None:
+            return 'daily_valuation_unavailable'
+        day = int(self.clock() // 86400)
+        if account.daily_day != day:
+            account.daily_day, account.daily_start_equity = day, equity
+            account.daily_start_flows = account.net_cash_flows
+            account.daily_halted = False
+            account.daily_overshoot = 0.0
+        loss = (Decimal(str(account.daily_start_equity))-Decimal(str(equity))
+                + Decimal(str(account.net_cash_flows-account.daily_start_flows)))
+        limit = Decimal(str(account.daily_start_equity))*Decimal(str(self.config.daily_loss_limit_pct))/100
+        account.daily_loss = float(max(Decimal(0), loss))
+        if loss >= limit and limit > 0:
+            account.daily_halted = True
+        account.daily_overshoot = max(account.daily_overshoot, float(max(Decimal(0), loss-limit)))
+        return 'daily_loss_limit' if account.daily_halted else None
+
     def available_cash(self, portfolio: PortfolioState, exchange: str) -> float:
         balance = portfolio.balances.get(exchange, {}).get(self.config.currency)
         if balance is None:
@@ -333,6 +390,9 @@ class RiskManager:
         self, intent, snapshot, market, price, category, now, *, group_budget, group_quantity,
     ) -> RiskDecision:
         portfolio = snapshot.portfolios[self.portfolio_id]
+        daily_rejection = self.update_daily_risk(snapshot)
+        if daily_rejection:
+            return self._reject(daily_rejection)
         if intent.reduce_only:
             return self._reject("reduce_only_buy_unsupported")
         if portfolio.entries_halted or portfolio.requires_reconciliation:

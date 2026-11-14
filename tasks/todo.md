@@ -63,12 +63,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T05: Enforce daily loss centrally
 
-- [ ] Implement T05.
+- [x] Implement T05.
 - Description: Add the daily portfolio loss stop to the risk manager and supervised risk ticks.
 - Acceptance:
-  - [ ] Compute daily loss from UTC start equity using conservative executable liquidation values and fees across both venues, without double-counting reserves or debited fees. Default to 10%; validate configured 10–15%.
-  - [ ] At the exact threshold, latch new-entry prohibition for the UTC day and request entry cancellations. Permit valid reduce-only exits; report unavoidable overshoot and reject invalid/stale valuation instead of granting more risk.
-  - [ ] Market rollover never resets the daily baseline/latch. UTC midnight carries real holdings and unresolved obligations; high-water drawdown remains a distinct existing control.
+  - [x] Compute daily loss from UTC start equity using conservative executable liquidation values and fees across both venues, without double-counting reserves or debited fees. Default to 10%; validate configured 10–15%.
+  - [x] At the exact threshold, latch new-entry prohibition for the UTC day and request entry cancellations. Permit valid reduce-only exits; report unavoidable overshoot and reject invalid/stale valuation instead of granting more risk.
+  - [x] Market rollover never resets the daily baseline/latch. UTC midnight carries real holdings and unresolved obligations; high-water drawdown remains a distinct existing control.
 - Verify: `python3 -m pytest -q tests/test_complement_daily_risk.py tests/test_risk_manager.py` with threshold equality, fees, unrealized loss, blocked-entry reductions, and midnight cases.
 - Dependencies: T03, T04.
 - Likely files: `src/market_decisions/risk_manager.py`, `src/utilities/classes.py`, `src/paper_trading/runtime.py`, `tests/test_complement_daily_risk.py`.

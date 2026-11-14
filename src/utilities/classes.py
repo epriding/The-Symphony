@@ -378,6 +378,7 @@ class RiskConfig:
     max_position_exposure: float = 100.0
     stop_loss_pct: float = 10.0
     max_drawdown_pct: Optional[float] = None
+    daily_loss_limit_pct: Optional[float] = None
     capital_allocation: Optional[float] = None
     max_signal_age_seconds: float = 30.0
     max_quote_age_seconds: float = 5.0
@@ -409,6 +410,11 @@ class RiskConfig:
                 raise ValueError(f"Invalid risk setting: {name}")
         if self.stop_loss_pct > 100 or (self.max_drawdown_pct is not None and self.max_drawdown_pct > 100):
             raise ValueError("Loss percentages must be between 0 and 100")
+        if self.daily_loss_limit_pct is not None and (
+                isinstance(self.daily_loss_limit_pct, bool)
+                or not math.isfinite(self.daily_loss_limit_pct)
+                or not 10 <= self.daily_loss_limit_pct <= 15):
+            raise ValueError('Daily loss limit must be between 10 and 15 percent')
         if set(self.kelly_criterion) != {"long_term", "short_term"}:
             raise ValueError("Both Kelly horizons are required")
         fractions = list(self.kelly_criterion.values()) + list(self.diversification.values())
@@ -479,6 +485,12 @@ class PortfolioState:
     entries_halted: bool = False
     cash_credits: Dict[str, float] = field(default_factory=dict)
     settlements: set = field(default_factory=set)
+    daily_day: Optional[int] = None
+    daily_start_equity: Optional[float] = None
+    daily_start_flows: float = 0.0
+    daily_halted: bool = False
+    daily_loss: float = 0.0
+    daily_overshoot: float = 0.0
 
     @property
     def requires_reconciliation(self) -> bool:

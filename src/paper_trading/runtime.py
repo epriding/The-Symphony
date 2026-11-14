@@ -483,6 +483,11 @@ class BotRunner:
         for portfolio, manager in self._session.state.risk_managers.items():
             if not self._session.state.portfolios[portfolio].paper:
                 continue
+            account = snapshot.portfolios[portfolio]
+            if account.daily_halted:
+                self._control('daily_stop', portfolio=portfolio, day=account.daily_day,
+                    loss=account.daily_loss, overshoot=account.daily_overshoot)
+                await self._cancel_orders(entries_only=True, portfolio=portfolio)
             for intent in manager.stop_loss_intents(snapshot):
                 intent = replace(intent, intent_id=self._system_ids(), created_at=self.clock())
                 await self._session.submit(intent)
@@ -531,9 +536,13 @@ class BotRunner:
             await self._complete()
             await self._notify_and_dispatch()
 
-    async def _cancel_orders(self, strategy=None):
+    async def _cancel_orders(self, strategy=None, *, entries_only=False, portfolio=None):
         session = self._session
         for order_id, order in list(session.engine.orders.items()):
+            if entries_only and order.approved.side != Side.BUY:
+                continue
+            if portfolio is not None and order.approved.portfolio_id != portfolio:
+                continue
             if strategy is not None and order.approved.strategy != strategy:
                 continue
             if order.phase == 'terminal':

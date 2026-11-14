@@ -72,6 +72,7 @@ class TradingState:
                 portfolio.positions_ready.add(exchange)
                 portfolio.orders_ready.add(exchange)
             portfolio.equity_high_water = sum(exchanges.values())
+        self._refresh_performance()
 
     def portfolio_for_strategy(self, strategy):
         return self.strategy_portfolios.get(strategy)
@@ -107,6 +108,7 @@ class TradingState:
         # and returns only a number, so no ledger view escapes this calculation.
         snapshot = self._risk_view()
         for portfolio_id, manager in self.risk_managers.items():
+            manager.update_daily_risk(snapshot)
             equity = manager.equity(snapshot)
             portfolio = self.portfolios[portfolio_id]
             if equity is not None:
