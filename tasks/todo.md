@@ -137,12 +137,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T09: Retain old obligations within bounds
 
-- [ ] Implement T09.
+- [x] Implement T09.
 - Description: Keep older-window execution and settlement alive while safely retiring completed subscriptions/state.
 - Acceptance:
-  - [ ] Late old-window fills, cancellation races, settlements, cash, reserves, and daily state remain correctly attributed when the next window is active. Unresolved excess blocks entries in every window.
-  - [ ] Retain lifecycle subscriptions/polling for outstanding obligations. Archive fully settled history and retire unneeded depth without losing required evidence or duplicate protection.
-  - [ ] Exercise more windows than the retention limit; working market/task/buffer state stays bounded. Capacity exhaustion pauses new entries visibly rather than deleting holdings or silently raising limits.
+  - [x] Late old-window fills, cancellation races, settlements, cash, reserves, and daily state remain correctly attributed when the next window is active. Unresolved excess blocks entries in every window.
+  - [x] Retain lifecycle subscriptions/polling for outstanding obligations. Archive fully settled history and retire unneeded depth without losing required evidence or duplicate protection.
+  - [x] Exercise more windows than the retention limit; working market/task/buffer state stays bounded. Capacity exhaustion pauses new entries visibly rather than deleting holdings or silently raising limits.
 - Verify: `python3 -m pytest -q tests/test_complement_retention.py tests/test_bot_retention_v1.py tests/test_bot_archived_accounting_v1.py`.
 - Dependencies: T06, T08.
 - Likely files: `src/paper_trading/runtime.py`, `src/paper_trading/paper_trading_engine.py`, `src/paper_trading/history.py`, `src/utilities/trading_state.py`, `tests/test_complement_retention.py`.

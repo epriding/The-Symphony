@@ -1,5 +1,6 @@
 """Paper-only session composition, shared by live feeds and offline replay."""
 from copy import deepcopy
+from collections import deque
 from dataclasses import replace
 import heapq
 import json
@@ -63,6 +64,7 @@ class PaperSession:
         self.data_end = clock()
         self.strategy = None
         self.settled_markets = set()
+        self.retired_markets = deque(maxlen=self.engine.limits.get('max_hot_history_records',16))
         self.intent_ids = IdGenerator(config.paper_execution.session_id + "-intent")
         self.random = random.Random(config.paper_execution.seed)
         self._public_event_index = 0
@@ -86,12 +88,78 @@ class PaperSession:
 
     def _admit_public_market(self, event):
         if self._market_keys is None:
-            return
+            return True
         if isinstance(event, PublicConnectionEvent) and not event.market_id:
-            return  # A venue-wide connection message has no market identity.
+            return True  # A venue-wide connection message has no market identity.
+        identity = (event.exchange, getattr(event,'market_id',''))
+        if identity not in self._market_keys and (
+                identity in self.retired_markets or
+                self.state.history_store.contains('retired_markets',identity)):
+            return False
         if isinstance(event, LiteOrderBookSnapshotEvent) and event.outcome not in ('YES', 'NO'):
             raise ValueError('Unknown public quote outcome')
         self._admit_market(event.exchange, getattr(event, 'market_id', ''))
+        return True
+
+    async def retire_market(self, exchange, market_id, *, not_before):
+        """Archive proof before releasing a completed window's finite working state."""
+        if self.clock() < not_before:
+            return False
+        key, identity = f'{exchange}:{market_id}', (exchange,market_id)
+        if key not in self.state.markets:
+            return True
+        await self.engine.compact(force=True)
+        async with self.coordinator.lock:
+            relevant = {oid for oid,order in self.engine.orders.items()
+                        if (order.approved.exchange,order.approved.market_id)==identity}
+            if any(self.engine.orders[oid].phase != 'terminal' for oid in relevant):
+                return False
+            if self.engine.outbox or self.engine.credit_outbox:
+                return False
+            def belongs(value):
+                if isinstance(value,str):
+                    return value in relevant
+                if hasattr(value,'event'):
+                    return belongs(value.event)
+                return (getattr(value,'exchange',None),getattr(value,'market_id',None))==identity
+            if any(event.priority == Scheduler.REPORT and any(belongs(arg) for arg in event.args)
+                   for event in self.engine.scheduler.events):
+                return False
+            async with self.state.lock:
+                for account in self.state.portfolios.values():
+                    if any((p.exchange,p.market_id)==identity for p in account.positions.values()):
+                        return False
+                    if any((o.exchange,o.market_id)==identity for o in account.pending_orders):
+                        return False
+                market = deepcopy(self.state.markets[key])
+            store = self.state.history_store
+            if store:
+                def commit(conn):
+                    store._put(conn,'retired_markets',identity,dict(market=market,not_before=not_before))
+                    conn.commit()
+                await store.run(commit)
+            self.record('retire_market',dict(exchange=exchange,market_id=market_id,not_before=not_before))
+            async with self.state.lock:
+                self.state.markets.pop(key,None)
+                self.state._market_price_timestamps.pop(key,None)
+                for mapping in (self.state.orderbooks,self.state.market_quotes):
+                    for outcome in ('YES','NO'):
+                        mapping.pop(f'{key}:{outcome}',None)
+                for account in self.state.portfolios.values():
+                    if store:
+                        account.settlements.discard(key)
+                    for bid,pair in list(account.complement_pairs.items()):
+                        if not any(pair['fills']) and key in [k.rsplit(':',1)[0] for k in pair['keys']]:
+                            del account.complement_pairs[bid]
+            if self._market_keys is not None:
+                self._market_keys.discard(identity)
+            self.settled_markets.discard(identity)
+            self.retired_markets.append(identity)
+            self.engine.books.pop(identity,None)
+            for queue_key in list(self.engine.queues):
+                if queue_key[:2]==identity:
+                    self.engine.queues.pop(queue_key)
+            return True
 
     async def _observe_reporter(self):
         if hasattr(self.reporter, 'observe_async'):
@@ -143,7 +211,8 @@ class PaperSession:
 
     async def _apply_public(self, envelope):
         event = envelope.event
-        self._admit_public_market(event)
+        if not self._admit_public_market(event):
+            return
         self._public_event_index += 1
         self.data_end = max(self.data_end, self.clock())
         if isinstance(event, SettlementEvent):

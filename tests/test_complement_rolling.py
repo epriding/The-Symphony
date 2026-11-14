@@ -30,7 +30,9 @@ async def setup_runner():
     config['rolling']={'discovery_interval_seconds':15,'polymarket_series_id':375,'max_pages':3,'page_size':20}
     config['risk']['PAPER']['diversification']={'crypto':1.,'other':0.}
     config['strategies'][0]['factory']='complement'
-    feeds=[ControlledFeed(v) for v in VENUES]
+    feeds=[ControlledFeed(v,markets=[]) for v in VENUES]
+    for options in config['feeds'].values():options['markets']=[]
+    config['strategies'][0]['required_markets']=[]
     for f in feeds:
         f.set_markets=lambda markets,f=f: setattr(f,'markets',list(markets))
     clock=VirtualClock(payload()[0]['terms'][2]+1)

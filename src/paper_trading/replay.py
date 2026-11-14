@@ -32,6 +32,9 @@ async def _apply_input(session, record):
         await session.submit_batch(payload)
     elif kind == 'order_update':
         await session._apply_cumulative_update(payload)
+    elif kind == 'retire_market':
+        if not await session.retire_market(**payload):
+            raise ValueError('Captured retirement still has unresolved obligations')
     elif kind == "cancel":
         await session.cancel(**payload)
     elif kind == "advance":

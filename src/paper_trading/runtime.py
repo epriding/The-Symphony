@@ -144,6 +144,8 @@ class BotRunner:
         self._discovery_ready = False
         self._rolling_paused = False
         self._fee_blocked = set()
+        self._window_ends = {}
+        self._refreshing = set()
         self._last_status = None
         self._event_bytes = 0
         self._event_bytes_highwater = 0
@@ -227,7 +229,12 @@ class BotRunner:
                     self._wake.set()
                     return
                 failures += 1
-                self._put(('windows_error', type(error).__name__))
+                try:
+                    self._put(('windows_error', type(error).__name__))
+                except BaseException as failure:
+                    self._producer_error = failure
+                    self._wake.set()
+                    return
             await asyncio.sleep(min(30, self.config['rolling']['discovery_interval_seconds']
                                     *2**min(failures,4)))
 
@@ -236,6 +243,7 @@ class BotRunner:
             raise ValueError('Discovery exceeded current/next window bound')
         new_keys = {f"{row['market'].exchange}:{row['market'].market_id}"
                     for pair in pairs for row in pair}
+        await self._retire_old_windows(new_keys)
         self._control('discovery', windows=len(pairs), reasons=reasons)
         self._discovery_ready = True
         if len(set(self._session.state.markets) | new_keys) > self.limits['max_markets']:
@@ -250,6 +258,7 @@ class BotRunner:
             feed.set_markets(subscriptions)
             for row in additions:
                 market, subscription = row['market'], row['subscription']
+                self._window_ends[f'{feed.exchange}:{market.market_id}'] = row['terms'][3]
                 self._identity_mapping[f'{feed.exchange}:{subscription}'] = f'{feed.exchange}:{market.market_id}'
                 if hasattr(feed, 'identities'):
                     feed.identities[subscription] = market.market_id
@@ -270,6 +279,26 @@ class BotRunner:
                         self._control('fee_profile_unavailable', exchange=feed.exchange, market_id=market.market_id)
                 await self._session.add_market(market)
         self._windows = pairs
+
+    async def _retire_old_windows(self, wanted):
+        for key,end in list(self._window_ends.items()):
+            if key in wanted or self.clock() < end:
+                continue
+            if any(slot.task is not None and key in slot.entry['required_markets'] for slot in self.slots):
+                continue
+            venue,market_id = key.split(':',1)
+            if venue in self._refreshing:
+                continue
+            if not await self._session.retire_market(venue,market_id,not_before=end):
+                continue
+            subscriptions = [alias for alias,canonical in self._identity_mapping.items() if canonical==key]
+            for alias in subscriptions:
+                del self._identity_mapping[alias]
+            for feed in self.feeds:
+                if feed.exchange == venue:
+                    feed.set_markets([s for s in feed.markets if f'{venue}:{s}' not in subscriptions])
+            del self._window_ends[key]
+            self._control('window_retirement',exchange=venue,market_id=market_id)
 
     def _activate_window(self):
         if 'rolling' not in self.config or self._rolling_paused:
@@ -298,14 +327,18 @@ class BotRunner:
         try:
             while True:
                 await asyncio.sleep(30)
-                for identifier in feed.markets:
-                    market = await feed.get_market(identifier)
-                    identity = self._identity_mapping[f'{feed.exchange}:{identifier}']
-                    if f'{market.exchange}:{market.market_id}' != identity:
-                        raise ValueError('Refreshed metadata changed the subscribed market identity')
-                    self._put(('market', market))
-                async for envelope in feed.settlements():
-                    self._put(('public', envelope))
+                self._refreshing.add(feed.exchange)
+                try:
+                    for identifier in feed.markets:
+                        market = await feed.get_market(identifier)
+                        identity = self._identity_mapping[f'{feed.exchange}:{identifier}']
+                        if f'{market.exchange}:{market.market_id}' != identity:
+                            raise ValueError('Refreshed metadata changed the subscribed market identity')
+                        self._put(('market', market))
+                    async for envelope in feed.settlements():
+                        self._put(('public', envelope))
+                finally:
+                    self._refreshing.discard(feed.exchange)
         except asyncio.CancelledError:
             raise
         except BaseException as error:
@@ -617,6 +650,10 @@ class BotRunner:
                     market = getattr(payload.event, 'market_id', '')
                     allowed = set(self._identity_mapping.values())
                     if venue not in self.config['feeds'] or (market and f'{venue}:{market}' not in allowed):
+                        if ('rolling' in self.config and market and self._store and
+                                await self._store.acontains('retired_markets',(venue,market))):
+                            self._control('retired_input_ignored',exchange=venue,market_id=market)
+                            continue
                         raise ValueError('Unsubscribed public event')
                     self._session.publish(payload)
                 elif kind == 'market':
