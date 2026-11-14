@@ -78,3 +78,22 @@ async def test_public_adapters_use_official_series_and_bounded_pagination():
         assert request.call_args.kwargs['query']['seriesId']==375
     finally:
         await p.aclose()
+
+
+@pytest.mark.asyncio
+async def test_subscription_update_is_bounded_and_requests_resnapshot():
+    import asyncio
+    from src.api.interfaces.polymarket_us_public import PolymarketUSMarketData
+    from src.api.interfaces.kalshi import KalshiMarketData
+    for feed in (PolymarketUSMarketData([],max_event_bytes=262144,max_markets=2),
+                 KalshiMarketData([],max_event_bytes=262144,max_markets=2)):
+        try:
+            feed._resubscribe = asyncio.Event()
+            feed.set_markets(['a','b'])
+            assert feed.markets == ['a','b'] and feed._resubscribe.is_set()
+            with pytest.raises(ValueError): feed.set_markets(['a','b','c'])
+            assert feed.markets == ['a','b']
+            feed.set_markets(['b'])
+            assert feed.markets == ['b']
+        finally:
+            if hasattr(feed,'aclose'): await feed.aclose()

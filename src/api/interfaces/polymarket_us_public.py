@@ -22,6 +22,8 @@ class PolymarketUSMarketData(MarketDataClient):
         if queue_limit < 1 or read_interval <= 0:
             raise ValueError("Positive public queue/read limits required")
         self.markets = list(markets)
+        self.max_markets = max_markets
+        self._resubscribe = asyncio.Event()
         if max_markets is not None and len(self.markets) > max_markets:
             raise ValueError('Public market capacity exceeded')
         self.key_id = key_id
@@ -45,6 +47,21 @@ class PolymarketUSMarketData(MarketDataClient):
         self.last_read = 0.0
         self.epoch = 0
         self._close_task = None
+
+    def set_markets(self, markets):
+        values = list(markets)
+        if len(set(values)) != len(values) or (self.max_markets is not None and len(values) > self.max_markets):
+            raise ValueError('Public market capacity exceeded')
+        if values == self.markets:
+            return
+        self.markets = values
+        self.normalizer.allowed_markets = frozenset(values)
+        for slug in list(self.identities):
+            if slug not in values:
+                del self.identities[slug]
+        self.overrides = {key:value for key,value in self.overrides.items() if key in values}
+        self.queue_limit = max(1, 2*(self.max_markets or len(values)))
+        self._resubscribe.set()
 
     async def aclose(self):
         """Close owned HTTP transport once, including pre-stream startup failure."""
@@ -80,7 +97,7 @@ class PolymarketUSMarketData(MarketDataClient):
             result.append(market)
         return result
 
-    async def discover_windows(self, *, limit, cursor=None, series_id=375):
+    async def discover_windows(self, *, limit, cursor=None, series_id=375, now=None):
         # Events carry official series membership; titles/slugs never select it.
         offset = int(cursor or 0)
         async def request():
@@ -143,6 +160,7 @@ class PolymarketUSMarketData(MarketDataClient):
         sdk = PolymarketUS(key_id=self.key_id, secret_key=self.secret_key) if self.max_event_bytes is None else None
         try:
             while True:
+                self._resubscribe.clear()
                 self.epoch += 1
                 raw_queue = asyncio.Queue(maxsize=self.queue_limit)
                 recovery = asyncio.Event()
@@ -186,7 +204,7 @@ class PolymarketUSMarketData(MarketDataClient):
                             await websocket.subscribe(f"{slug}:{subscription}", subscription, [slug])
                     attempts = 0
                     yield self.connection(True, "awaiting_resnapshot")
-                    while not recovery.is_set():
+                    while not recovery.is_set() and not self._resubscribe.is_set():
                         try:
                             message, receipt = await asyncio.wait_for(raw_queue.get(), timeout=.25)
                         except asyncio.TimeoutError:
@@ -201,6 +219,8 @@ class PolymarketUSMarketData(MarketDataClient):
                 finally:
                     await websocket.close()
                 attempts += 1
+                if self._resubscribe.is_set():
+                    continue
                 await asyncio.sleep(min(2**min(attempts, 5), 30))
         finally:
             await self.aclose()

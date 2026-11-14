@@ -20,6 +20,8 @@ class KalshiMarketData(MarketDataClient):
                  ws_url="wss://external-api-ws.kalshi.com/trade-api/ws/v2",
                  max_event_bytes=None, max_markets=None, max_book_levels=None):
         self.markets = list(markets)
+        self.max_markets = max_markets
+        self._resubscribe = asyncio.Event()
         if max_markets is not None and len(self.markets) > max_markets:
             raise ValueError('Public market capacity exceeded')
         self.max_event_bytes = max_event_bytes
@@ -34,6 +36,24 @@ class KalshiMarketData(MarketDataClient):
             max_book_levels=max_book_levels,
             max_sequences=(len(self.markets) + 4) if max_event_bytes else None)
         self.epoch = 0
+
+    def set_markets(self, markets):
+        values = list(markets)
+        if len(set(values)) != len(values) or (self.max_markets is not None and len(values) > self.max_markets):
+            raise ValueError('Public market capacity exceeded')
+        if values == self.markets:
+            return
+        self.markets = values
+        self.normalizer.allowed_markets = frozenset(values)
+        self.normalizer.max_sequences = (self.max_markets or len(values))+4
+        for event, members in list(self.normalizer.event_members.items()):
+            members.intersection_update(values)
+            if not members:
+                del self.normalizer.event_members[event]
+        self.normalizer.states = {key:value for key,value in self.normalizer.states.items() if key in values}
+        self.normalizer.frozen_fees.intersection_update(values)
+        self.overrides = {key:value for key,value in self.overrides.items() if key in values}
+        self._resubscribe.set()
 
     async def get_market(self, ticker):
         if self.max_event_bytes is not None and ticker not in self.markets:
@@ -69,9 +89,11 @@ class KalshiMarketData(MarketDataClient):
         return [market_metadata(self.exchange, raw, self.overrides.get(raw["ticker"]))
                 for raw in response["markets"]]
 
-    async def discover_windows(self, *, limit, cursor=None, series_id=None):
+    async def discover_windows(self, *, limit, cursor=None, series_id=None, now=None):
         # Public listing only; series filter is fixed to the approved experiment.
         params = dict(series_ticker='KXBTC15M', limit=limit)
+        if now is not None:
+            params.update(min_close_ts=int(now), max_close_ts=(int(now)//900+2)*900)
         if cursor:
             params['cursor'] = cursor
         response = await self.api.get('/markets', params)
@@ -108,6 +130,7 @@ class KalshiMarketData(MarketDataClient):
     async def stream(self):
         attempts = 0
         while True:
+            self._resubscribe.clear()
             self.epoch += 1
             self.normalizer.reset()
             try:
@@ -122,7 +145,11 @@ class KalshiMarketData(MarketDataClient):
                             "channels": ["market_lifecycle_v2"]}})
                         attempts = 0
                         yield self.connection(True, "awaiting_resnapshot")
-                        async for frame in websocket:
+                        while not self._resubscribe.is_set():
+                            try:
+                                frame = await asyncio.wait_for(websocket.receive(), .25)
+                            except asyncio.TimeoutError:
+                                continue
                             if frame.type != aiohttp.WSMsgType.TEXT:
                                 if self.max_event_bytes and frame.type == aiohttp.WSMsgType.ERROR:
                                     failure = websocket.exception()
@@ -147,4 +174,6 @@ class KalshiMarketData(MarketDataClient):
                 # Do not log raw authenticated payloads/headers or private keys.
                 yield self.connection(False, f"public_feed_recovery:{type(error).__name__}")
             attempts += 1
+            if self._resubscribe.is_set():
+                continue
             await asyncio.sleep(min(2**min(attempts, 5), 30))

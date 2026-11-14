@@ -115,6 +115,13 @@ Task completion requires its acceptance checks and verification, not just source
 - Likely files: `src/paper_trading/window_discovery.py`, `src/api/interfaces/bounded_public.py`, `src/api/interfaces/polymarket_us_public.py`, `src/api/interfaces/kalshi.py`, `tests/test_complement_discovery.py`.
 - Estimated scope: medium, five files.
 
+## T08a: Bound public subscription changes
+
+- [x] Implement bounded subscription updates on both existing public feeds; request reconnection/resnapshot, prune retired membership, and restrict Kalshi discovery to current/next close times.
+- Verify: discovery/transport tests and full regression.
+- Dependencies: T07.
+- Files: both adapters, discovery, discovery tests.
+
 ## T08: Activate rolling public subscriptions
 
 - [ ] Implement T08.

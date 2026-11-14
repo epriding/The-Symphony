@@ -93,7 +93,7 @@ async def discover_windows(feeds, *, now, settings):
         cursor = None
         for page in range(max_pages):
             rows, next_cursor = await feed.discover_windows(limit=page_size, cursor=cursor,
-                series_id=settings.get('polymarket_series_id',375))
+                series_id=settings.get('polymarket_series_id',375), now=now)
             if len(rows) > page_size:
                 raise ValueError('Discovery response exceeds result bound')
             for raw in rows:
