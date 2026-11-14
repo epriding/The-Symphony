@@ -196,15 +196,25 @@ class RiskManager:
         if self.config.daily_loss_limit_pct is None:
             return None
         account = snapshot.portfolios[self.portfolio_id]
+        day = int(self.clock() // 86400)
         equity = self.daily_equity(snapshot)
+        if account.daily_day is not None and account.daily_day != day and (
+                equity is None or not account.daily_valuation_complete):
+            if not account.daily_baseline_pending:
+                account.daily_boundary_anchor = account.daily_last_complete_equity
+            account.daily_baseline_pending = True
+            return 'daily_valuation_unavailable'
         if equity is None:
             return 'daily_valuation_unavailable'
-        day = int(self.clock() // 86400)
         if account.daily_day != day:
-            account.daily_day, account.daily_start_equity = day, equity
+            baseline = max(equity,account.daily_boundary_anchor or equity) if account.daily_baseline_pending else equity
+            account.daily_day, account.daily_start_equity = day, baseline
             account.daily_start_flows = account.net_cash_flows
             account.daily_halted = False
             account.daily_overshoot = 0.0
+            account.daily_baseline_pending = False
+        if not finite(account.daily_start_equity) or account.daily_start_equity <= 0:
+            return 'daily_baseline_unavailable'
         loss = (Decimal(str(account.daily_start_equity))-Decimal(str(equity))
                 + Decimal(str(account.net_cash_flows-account.daily_start_flows)))
         limit = Decimal(str(account.daily_start_equity))*Decimal(str(self.config.daily_loss_limit_pct))/100
@@ -212,6 +222,8 @@ class RiskManager:
         if loss >= limit and limit > 0:
             account.daily_halted = True
         account.daily_overshoot = max(account.daily_overshoot, float(max(Decimal(0), loss-limit)))
+        if account.daily_valuation_complete:
+            account.daily_last_complete_equity = equity
         return ('daily_loss_limit' if account.daily_halted else
                 'daily_valuation_unavailable' if not account.daily_valuation_complete else None)
 

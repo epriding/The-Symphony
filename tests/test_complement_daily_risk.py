@@ -88,3 +88,32 @@ async def test_fresh_unsellable_inventory_is_zero_valued_and_still_trips_daily_s
     manager.update_daily_risk(session.state._risk_view())
     assert account.daily_halted
     await session.finish()
+
+
+@pytest.mark.asyncio
+async def test_zero_daily_baseline_cannot_authorize_entries():
+    session=await make_session();await book(session)
+    manager,account=enable(session)
+    account.daily_start_equity=0
+    assert manager.evaluate(signal(session),session.state._risk_view()).reason=='daily_baseline_unavailable'
+    await session.finish()
+
+
+@pytest.mark.asyncio
+async def test_missing_midnight_quotes_cannot_shift_baseline_down_to_erase_gap_loss():
+    from test_paper_trading import submit_size
+    session=await make_session();await book(session)
+    manager,account=enable(session)
+    await submit_size(session,1)
+    await session.advance(START+.05)
+    manager.update_daily_risk(session.state._risk_view())
+    boundary_anchor=manager.daily_equity(session.state._risk_view())
+    midnight=(int(START)//86400+1)*86400
+    session.clock.advance(midnight+1)
+    assert manager.update_daily_risk(session.state._risk_view())=='daily_valuation_unavailable'
+    account.balances['A']['USD'].cash-=2000
+    await book(session)
+    manager.update_daily_risk(session.state._risk_view())
+    assert account.daily_start_equity==boundary_anchor
+    assert account.daily_halted
+    await session.finish()

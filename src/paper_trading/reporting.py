@@ -465,7 +465,8 @@ class BoundedReporter(Reporter):
                 liquidation=[self._liquidation_estimate(position, state) for position in portfolio.positions.values()],
                 daily=dict(day=portfolio.daily_day,start_equity=portfolio.daily_start_equity,
                     halted=portfolio.daily_halted,loss=portfolio.daily_loss,overshoot=portfolio.daily_overshoot,
-                    valuation_complete=portfolio.daily_valuation_complete))
+                    valuation_complete=portfolio.daily_valuation_complete,
+                    baseline_pending=portfolio.daily_baseline_pending,boundary_anchor=portfolio.daily_boundary_anchor))
         return accounts
 
     def _summary_data(self, conn):

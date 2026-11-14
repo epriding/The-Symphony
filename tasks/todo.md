@@ -242,6 +242,13 @@ Task completion requires its acceptance checks and verification, not just source
 - Verify: disabled-after-fill public-runtime regression, resistant recovery callback timeout, existing shutdown/recovery tests, full suite, compilation.
 - Files: runtime, replay, recovery tests.
 
+## T05c: Reject invalid daily baselines and retain a midnight gap anchor
+
+- [x] Zero/invalid day-start equity cannot authorize entries. If complete valuation is unavailable at midnight, pause entries and retain the last complete equity anchor; later baseline establishment cannot erase a gap loss.
+- [x] Report pending baseline and anchor explicitly; preserve the independent high-water control.
+- Verify: zero-baseline and midnight-gap regressions, daily risk/integration tests, full suite, compilation.
+- Files: portfolio fields, risk manager, reporting, daily risk tests.
+
 ## T14: Document and exercise live paper operation
 
 - [ ] Complete T14.
