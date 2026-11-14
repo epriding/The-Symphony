@@ -158,7 +158,9 @@ class ImmediateComplementStrategy:
                 book = snapshot.orderbooks.get(f'{venue}:{market_id}:{outcome}')
                 terms = tuple(self.context.settings.get('terms', {}).get(venue, ()))
                 if (market is None or book is None or not market.active or len(terms) < 4
+                        or self.context.now() < float(terms[2])
                         or self.context.now() >= float(terms[3]) - float(self.options['entry_cutoff'])):
+                    self.last_reason = 'window_or_market_unavailable'
                     break
                 rules = self.context.execution.venues[venue]
                 account = snapshot.portfolios[self.context.portfolio_id]

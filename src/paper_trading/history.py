@@ -437,8 +437,10 @@ class HistoryStore:
 
     def _update_complement_totals(self, conn, row):
         kind = row.get('kind')
+        execution_role = (self._get(conn,'complement_order_roles',(row['exchange'],row['order_id']))
+                          if kind=='execution' else None)
         if ((kind == 'group' and not row.get('complement')) or
-                (kind == 'execution' and row.get('intent_reason') not in
+                (kind == 'execution' and execution_role is None and row.get('intent_reason') not in
                  ('immediate_complement','complement_recovery'))):
             return
         totals = self._get(conn,'_summary','complement',dict(attempted=0,paired=0,failed=0,
@@ -459,8 +461,8 @@ class HistoryStore:
                 return
             totals['attempted'] += 1
             totals['rejected'] += 1
-        elif kind == 'execution' and row.get('intent_reason') in ('immediate_complement','complement_recovery'):
-            role = 'entry' if row['side']=='BUY' else 'recovery'
+        elif kind == 'execution' and (execution_role or row.get('intent_reason') in ('immediate_complement','complement_recovery')):
+            role = execution_role or ('entry' if row['side']=='BUY' else 'recovery')
             self._put(conn,'complement_order_roles',(row['exchange'],row['order_id']),role)
             totals[role+'_fees'] += Decimal(row['fee'])
             if role == 'recovery':

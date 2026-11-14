@@ -98,9 +98,9 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## Checkpoint B: Complete one window in paper
 
-- [ ] An offline forced opportunity travels through strategy, risk, independent execution, recovery, and actual settlement events.
-- [ ] One-leg failure loses money visibly when appropriate; daily stop blocks later entries; matched inventory is preserved.
-- [ ] Full tests and source compilation pass. No live order placement is reachable.
+- [x] An offline forced opportunity travels through strategy, risk, independent execution, recovery, and actual settlement events.
+- [x] One-leg failure loses money visibly when appropriate; daily stop blocks later entries; matched inventory is preserved.
+- [x] Full tests and source compilation pass. No live order placement is reachable.
 
 ## T07: Discover matching Bitcoin windows
 
@@ -150,9 +150,9 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## Checkpoint C: Continuous rolling experiment
 
-- [ ] Three-window run includes one skipped window, one delayed settlement, and a daily-stop boundary without resets or lost obligations.
-- [ ] Retention/capacity tests and full regression suite pass.
-- [ ] Review rolling traces and retained inventory before launch wiring.
+- [x] Three-window run includes one skipped window, one delayed settlement, and a daily-stop boundary without resets or lost obligations.
+- [x] Retention/capacity tests and full regression suite pass.
+- [x] Review rolling traces and retained inventory before launch wiring.
 
 ## T10: Preserve capture and recorded replay
 
@@ -195,9 +195,9 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## Checkpoint D: Launchable paper strategy
 
-- [ ] Configured synthetic launch produces the normal capture, execution, and summary artifacts with correct risk behavior.
-- [ ] Full tests, source compilation, and existing smoke/replay commands pass.
-- [ ] Review example defaults and confirm that no new private-API recertification or backtesting dependency was introduced.
+- [x] Configured synthetic launch produces the normal capture, execution, and summary artifacts with correct risk behavior.
+- [x] Full tests, source compilation, and existing smoke/replay commands pass.
+- [x] Review example defaults and confirm that no new private-API recertification or backtesting dependency was introduced.
 
 ## T05b: Preserve losses when fresh depth cannot liquidate all holdings
 
@@ -208,16 +208,17 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T13: Exercise the full failure matrix
 
-- [ ] Implement T13.
+- [x] Implement T13.
 - Description: Run the real strategy/runtime against deterministic synthetic markets to verify required behavior before public paper use.
 - Acceptance:
-  - [ ] Cover profitable pair, gross-positive/net-negative pair, stale/skewed data, insufficient depth/funds, both/zero/one-leg fill, cancel race, and missing recovery liquidity through the real gateway and ledger.
-  - [ ] Cover quiet-market recovery, duplicate/corrected reports, actual delayed/differing payouts, daily limit crossing, UTC midnight, three rolling windows, and retained-inventory capacity exhaustion.
-  - [ ] Assert accounting invariants and replay equality using independent expected totals; never require live networking, profitable public markets, or a forced minimum number of trades in CI.
+  - [x] Cover profitable pair, gross-positive/net-negative pair, stale/skewed data, insufficient depth/funds, both/zero/one-leg fill, cancel race, and missing recovery liquidity through the real gateway and ledger.
+  - [x] Cover quiet-market recovery, duplicate/corrected reports, actual delayed/differing payouts, daily limit crossing, UTC midnight, three rolling windows, and retained-inventory capacity exhaustion.
+  - [x] Assert accounting invariants and replay equality using independent expected totals; never require live networking, profitable public markets, or a forced minimum number of trades in CI.
 - Verify: `python3 -m pytest -q tests/test_complement_integration.py` followed by full tests, compilation, and offline smoke/replay in fresh directories.
 - Dependencies: T12.
 - Likely files: `tests/test_complement_integration.py`, `tests/complement_support.py`, `examples/complement_smoke.py` if needed for a reviewable command.
-- Estimated scope: medium, up to three files.
+- During T13, fixed attribution of central risk exits to complementary recovery fees and blocked early future-window entry; these minimal fixes add session/history/strategy to this task (five implementation files total).
+- Estimated scope: medium, five files including the synthetic fixture and integration tests.
 
 ## T14: Document and exercise live paper operation
 

@@ -353,9 +353,15 @@ class PaperSession:
         store = self.state.history_store
         if not store or not result.submission_ids:
             return
-        rows = [(order.exchange,oid,'entry' if order.side.value=='BUY' else 'recovery')
-                for order,oid in zip(result.decision.orders,result.submission_ids)
-                if order.intent.reason in ('immediate_complement','complement_recovery')]
+        rows = []
+        for order,oid in zip(result.decision.orders,result.submission_ids):
+            key = f'{order.exchange}:{order.market_id}:{order.outcome}'
+            account = self.state.portfolios[order.portfolio_id]
+            owned_pair = any(pair['strategy']==order.strategy and key in pair['keys']
+                             for pair in account.complement_pairs.values())
+            if order.intent.reason in ('immediate_complement','complement_recovery') or (
+                    order.side.value=='SELL' and order.intent.reduce_only and owned_pair):
+                rows.append((order.exchange,oid,'entry' if order.side.value=='BUY' else 'recovery'))
         if rows:
             def commit(conn):
                 for venue,oid,role in rows:
