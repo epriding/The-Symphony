@@ -1,0 +1,165 @@
+{
+  "strategy_portfolios": {
+    "complement": "PAPER"
+  },
+  "starting_balances": {
+    "PAPER": {
+      "POLYMARKET_US": 25,
+      "KALSHI": 25
+    }
+  },
+  "risk": {
+    "PAPER": {
+      "diversification": {
+        "crypto": 1,
+        "other": 0
+      },
+      "max_position_exposure": 5,
+      "max_total_exposure": 10,
+      "stop_loss_pct": 10,
+      "max_quote_age_seconds": 3,
+      "max_open_positions": 8,
+      "daily_loss_limit_pct": 10
+    }
+  },
+  "execution": {
+    "seed": 7,
+    "session_id": "complement-paper",
+    "assumptions": "Paper-only example; latency is illustrative and unmeasured. US retail coefficient .095 and Kalshi quadratic .07 with cent cash precision; no rebates assumed. Whole-contract sizing is conservative. Matching normal BRTI terms do not guarantee combined settlement.",
+    "processing_delay": {
+      "seconds": 0.005,
+      "jitter": 0.002
+    },
+    "max_pending_events": 1024,
+    "max_outbox": 128,
+    "markout_horizons": [
+      0.01,
+      0.05
+    ],
+    "venues": {
+      "POLYMARKET_US": {
+        "fees": {
+          "version": "us-retail-.095-example",
+          "model": "polymarket_us",
+          "taker": ".095",
+          "maker": "0",
+          "balance_precision": ".01",
+          "effective_from": 0
+        },
+        "max_book_age": 3,
+        "outbound": {
+          "seconds": 0.15,
+          "jitter": 0.05
+        },
+        "acknowledgement": {
+          "seconds": 0.1,
+          "jitter": 0.02
+        },
+        "execution_report": {
+          "seconds": 0.1,
+          "jitter": 0.02
+        },
+        "cancel": {
+          "seconds": 0.15,
+          "jitter": 0.05
+        },
+        "request_rate": 5,
+        "request_capacity": 5,
+        "rate_policy": "reject",
+        "netted_outcomes": true
+      },
+      "KALSHI": {
+        "fees": {
+          "version": "kalshi-quadratic-.07-example",
+          "model": "kalshi",
+          "taker": ".07",
+          "maker": "0",
+          "balance_precision": ".01",
+          "effective_from": 0
+        },
+        "max_book_age": 3,
+        "outbound": {
+          "seconds": 0.15,
+          "jitter": 0.05
+        },
+        "acknowledgement": {
+          "seconds": 0.1,
+          "jitter": 0.02
+        },
+        "execution_report": {
+          "seconds": 0.1,
+          "jitter": 0.02
+        },
+        "cancel": {
+          "seconds": 0.15,
+          "jitter": 0.05
+        },
+        "request_rate": 5,
+        "request_capacity": 5,
+        "rate_policy": "reject",
+        "netted_outcomes": true
+      }
+    }
+  },
+  "feeds": {
+    "POLYMARKET_US": {
+      "key_id_env": "POLY_KEY_ID",
+      "secret_key_env": "POLY_SECRET_KEY",
+      "markets": [],
+      "read_interval": 0.5,
+      "market_rules": {}
+    },
+    "KALSHI": {
+      "key_id_env": "KALSHI_KEY_ID",
+      "private_key_env": "KALSHI_SECRET_KEY",
+      "markets": [],
+      "read_interval": 0.5,
+      "market_rules": {}
+    }
+  },
+  "strategies": [
+    {
+      "name": "complement",
+      "factory": "immediate-complement-v1",
+      "enabled": true,
+      "required_markets": [],
+      "settings": {
+        "max_pair_spend": "2",
+        "max_quantity": "2",
+        "min_net_profit_per_pair": ".02",
+        "max_book_age": 3,
+        "max_quote_skew": 1,
+        "entry_timeout": 1,
+        "recovery_timeout": 5,
+        "recovery_attempts": 3,
+        "entry_cutoff": 30,
+        "max_candidates": 1000
+      }
+    }
+  ],
+  "runtime": {
+    "source": "public",
+    "observe_only": false,
+    "startup_timeout_seconds": 45,
+    "strategy_timeout_seconds": 0.5,
+    "risk_interval_seconds": 0.25,
+    "shutdown_grace_seconds": 15,
+    "limits": {
+      "max_strategies": 1,
+      "max_markets": 8,
+      "max_active_orders": 32,
+      "max_positions": 8,
+      "max_intents_per_callback": 8,
+      "max_hot_history_records": 16,
+      "max_archive_cache_records": 8,
+      "max_event_bytes": 524288,
+      "memory_budget_bytes": 134217728
+    }
+  },
+  "rolling": {
+    "polymarket_series_id": 375,
+    "discovery_interval_seconds": 15,
+    "max_pages": 3,
+    "page_size": 20
+  }
+}

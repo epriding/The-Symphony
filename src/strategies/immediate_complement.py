@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_CEILING
 from fractions import Fraction
 from math import lcm
+import math
 from hashlib import sha256
 
 from ..paper_trading.fees import FeeModel
@@ -109,6 +110,30 @@ def evaluate_pair(legs, *, now, max_spend, min_profit, max_quantity,
 class ImmediateComplementStrategy:
     """One immediate pair attempt per window; reduce observed excess on failure."""
     needs_account_ticks = True
+    defaults = dict(max_pair_spend='5', max_quantity='10',
+        min_net_profit_per_pair='.02', max_book_age=3, max_quote_skew=1,
+        entry_timeout=1, recovery_timeout=5, recovery_attempts=3,
+        entry_cutoff=30, max_candidates=1000)
+
+    @classmethod
+    def validate_settings(cls, settings):
+        if not isinstance(settings,dict) or set(settings)-set(cls.defaults)-{'markets','terms'}:
+            raise ValueError('Unknown complement settings')
+        options = {**cls.defaults,**settings}
+        for name in cls.defaults:
+            try:
+                value=dec(options[name])
+                valid=math.isfinite(float(value)) and (value>=0 if name=='max_quote_skew' else value>0)
+            except (ValueError,ArithmeticError,TypeError,OverflowError):
+                valid=False
+            if not valid:
+                raise ValueError(f'Invalid complement setting: {name}')
+        if dec(options['min_net_profit_per_pair']) >= 1:
+            raise ValueError('Minimum per-pair profit must be below one dollar')
+        for name in ('max_candidates','recovery_attempts'):
+            if type(options[name]) is not int or options[name]>10000:
+                raise ValueError(f'Invalid complement setting: {name}')
+        return options
 
     def __init__(self, context):
         self.context = context
@@ -116,20 +141,7 @@ class ImmediateComplementStrategy:
         self.last_window = None
         self.last_reason = 'awaiting_pair'
         self.last_candidate = None
-        self.options = dict(max_pair_spend='5', max_quantity='10',
-            min_net_profit_per_pair='.02', max_book_age=3, max_quote_skew=1,
-            entry_timeout=1, recovery_timeout=5, recovery_attempts=3,
-            entry_cutoff=30, max_candidates=1000)
-        self.options.update(context.settings)
-        for name in ('max_pair_spend', 'max_quantity', 'min_net_profit_per_pair',
-                     'max_book_age', 'entry_timeout', 'recovery_timeout', 'entry_cutoff'):
-            if dec(self.options[name]) <= 0:
-                raise ValueError(f'Invalid complement setting: {name}')
-        if dec(self.options['max_quote_skew']) < 0:
-            raise ValueError('Invalid max_quote_skew')
-        for name in ('recovery_attempts', 'max_candidates'):
-            if type(self.options[name]) is not int or not 0 < self.options[name] <= 10000:
-                raise ValueError(f'Invalid complement setting: {name}')
+        self.options = self.validate_settings(context.settings)
 
     async def on_snapshot(self, snapshot):
         if self.active is not None:

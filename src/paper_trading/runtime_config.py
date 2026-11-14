@@ -219,6 +219,14 @@ def validate_bot_config(value, *, require_runtime=False):
             raise ValueError(f'Strategy {name} requires an unsubscribed market')
         if not isinstance(entry['settings'], dict):
             raise ValueError('Strategy settings must be an object')
+        if entry['factory']=='immediate-complement-v1':
+            from ..strategies.immediate_complement import ImmediateComplementStrategy
+            ImmediateComplementStrategy.validate_settings(entry['settings'])
+            if config.risk_configs['PAPER'].daily_loss_limit_pct is None:
+                raise ValueError('The complement strategy requires a 10–15% daily risk limit')
+            if rolling is None and (set(entry['settings'].get('markets',{})) != {'KALSHI','POLYMARKET_US'}
+                                    or set(entry['settings'].get('terms',{})) != {'KALSHI','POLYMARKET_US'}):
+                raise ValueError('Complement strategy requires rolling discovery or explicit paired terms')
         size = len(json_bytes(entry['settings']))
         if size > limits['max_event_bytes']:
             raise ValueError('Strategy settings exceed max_event_bytes')

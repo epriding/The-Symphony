@@ -109,7 +109,8 @@ class BotRunner:
         self.runtime = self.config['runtime']
         self.limits = self.runtime['limits']
         from ..strategies.smoke import SmokeStrategy
-        self.factories = {'smoke-v1': SmokeStrategy}
+        from ..strategies.immediate_complement import ImmediateComplementStrategy
+        self.factories = {'smoke-v1': SmokeStrategy,'immediate-complement-v1':ImmediateComplementStrategy}
         self.factories.update(strategy_factories or {})
         self.slots = [_Slot(entry) for entry in self.config['strategies'] if entry['enabled']]
         for slot in self.slots:

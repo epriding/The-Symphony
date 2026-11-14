@@ -182,12 +182,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T12: Expose a configured paper launch
 
-- [ ] Implement T12.
+- [x] Implement T12.
 - Description: Register the strategy and provide a usable rolling paper configuration through the existing CLI.
 - Acceptance:
-  - [ ] `main.py run` can launch the registered strategy with rolling series, $25 starting cash per venue, configurable sizing/profit/freshness/delay/recovery settings, and the daily limit; no manual per-window market IDs are needed.
-  - [ ] Validate finite settings and resource budgets before transport startup. Example fee/delay values are explicit assumptions; reject missing credentials or bad configuration with clear errors through existing setup rather than adding private-endpoint test gates.
-  - [ ] Launch wiring is paper-only, starts no private order client, and leaves smoke/replay/fixed-market observation behavior intact. Defaults are reviewable and do not claim calibrated performance.
+  - [x] `main.py run` can launch the registered strategy with rolling series, $25 starting cash per venue, configurable sizing/profit/freshness/delay/recovery settings, and the daily limit; no manual per-window market IDs are needed.
+  - [x] Validate finite settings and resource budgets before transport startup. Example fee/delay values are explicit assumptions; reject missing credentials or bad configuration with clear errors through existing setup rather than adding private-endpoint test gates.
+  - [x] Launch wiring is paper-only, starts no private order client, and leaves smoke/replay/fixed-market observation behavior intact. Defaults are reviewable and do not claim calibrated performance.
 - Verify: `python3 -m pytest -q tests/test_complement_cli.py tests/test_bot_cli_v1.py` plus a synthetic configured launch using fake transports.
 - Dependencies: T03, T05, T08, T11.
 - Likely files: `main.py`, `src/paper_trading/runtime_config.py`, `examples/complement_config.example.json`, `src/strategies/immediate_complement.py`, `tests/test_complement_cli.py`.
