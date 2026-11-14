@@ -50,12 +50,12 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T04: Recover independently failed legs
 
-- [ ] Implement T04.
+- [x] Implement T04.
 - Description: Connect linked entry execution to observed-fill reconciliation and bounded excess recovery.
 - Acceptance:
-  - [ ] Reuse realistic independent-leg execution with nonzero fixture delays. Demonstrate both fill, neither fills, and one fills/one fails against arrival depth; batch approval never forces atomic fills.
-  - [ ] On failure/deadline, cancel pending entries, reconcile cumulative fills, and issue bounded reduce-only IOC sales of confirmed excess. Late/duplicate/corrected reports and pending exits cannot oversell.
-  - [ ] Progress on account updates/timers during quiet markets. Missing/stale bids or uncertain order status retain commitments/residual inventory and block new entries; shutdown attempts bounded cleanup without fabricated fills.
+  - [x] Reuse realistic independent-leg execution with nonzero fixture delays. Demonstrate both fill, neither fills, and one fills/one fails against arrival depth; batch approval never forces atomic fills.
+  - [x] On failure/deadline, cancel pending entries, reconcile cumulative fills, and issue bounded reduce-only IOC sales of confirmed excess. Late/duplicate/corrected reports and pending exits cannot oversell.
+  - [x] Progress on account updates/timers during quiet markets. Missing/stale bids or uncertain order status retain commitments/residual inventory and block new entries; shutdown attempts bounded cleanup without fabricated fills.
 - Verify: `python3 -m pytest -q tests/test_complement_recovery.py tests/test_bot_recovery_v1.py tests/test_bot_shutdown_v1.py`.
 - Dependencies: T02, T03.
 - Likely files: `src/strategies/immediate_complement.py`, `src/paper_trading/runtime.py`, `src/paper_trading/session.py`, `src/market_decisions/order_coordinator.py`, `tests/test_complement_recovery.py`.

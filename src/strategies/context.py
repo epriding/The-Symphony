@@ -8,12 +8,13 @@ from ..utilities.classes import OrderIntent, OrderIntentBatch
 
 
 class StrategyContext:
-    __slots__ = ('strategy_name', 'portfolio_id', 'settings', 'random', '_clock', '_ids', '_time')
+    __slots__ = ('strategy_name', 'portfolio_id', 'settings', 'random', '_clock', '_ids', '_time', 'execution')
 
-    def __init__(self, strategy_name, portfolio_id, settings, clock, seed, session_id):
+    def __init__(self, strategy_name, portfolio_id, settings, clock, seed, session_id, *, execution=None):
         self.strategy_name = strategy_name
         self.portfolio_id = portfolio_id
         self.settings = deepcopy(settings)
+        self.execution = deepcopy(execution)
         self._clock = clock
         self._time = None
         seed_value = int.from_bytes(sha256(f'{seed}:{strategy_name}'.encode()).digest(), 'big')

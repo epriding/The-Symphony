@@ -308,7 +308,8 @@ class BotRunner:
         base = None
         for slot in self.slots:
             if (slot.disabled or slot.task is not None or not slot.pending
-                    or not self._status['strategies'][slot.entry['name']]['ready']):
+                    or (not self._status['strategies'][slot.entry['name']]['ready']
+                        and not getattr(slot.strategy, 'needs_account_ticks', False))):
                 continue
             if base is None:
                 base = await self._session.state.snapshot()
@@ -460,9 +461,12 @@ class BotRunner:
             slot.timing = None
             slot.snapshot_bytes = 0
             ready = self._status['strategies'][slot.entry['name']]['ready']
+            recovery = bool(result) and all(isinstance(item, OrderIntent)
+                and item.reduce_only and item.side == Side.SELL for item in result)
+            accepted = (ready or recovery) and not self._stopping and not self._stop.is_set()
             self._control('completion', strategy=slot.entry['name'], dispatch=slot.dispatch,
-                          decision=result, accepted=ready and not self._stopping and not self._stop.is_set())
-            if ready and not self._stopping and not self._stop.is_set():
+                          decision=result, accepted=accepted)
+            if accepted:
                 for intent in result:
                     if isinstance(intent, OrderIntentBatch):
                         await self._session.submit_batch(intent)
@@ -471,6 +475,9 @@ class BotRunner:
 
     async def _risk(self):
         self._control('risk_tick')
+        for slot in self.slots:
+            if not slot.disabled and getattr(slot.strategy, 'needs_account_ticks', False):
+                slot.pending = True
         snapshot = await self._session.state.snapshot()
         self._check_memory(extra=retained_bytes(snapshot))
         for portfolio, manager in self._session.state.risk_managers.items():
@@ -574,9 +581,27 @@ class BotRunner:
         if self.runtime['source'] == 'public' and not failed:
             await self._cancel_orders()
             deadline = time.monotonic() + self.runtime['shutdown_grace_seconds']
-            while self._unresolved() and time.monotonic() < deadline:
+            while time.monotonic() < deadline:
                 await self._drive(allow_work=False)
                 await self._session.engine.retry_reports()
+                submitted = False
+                for slot in self.slots:
+                    callback = getattr(slot.strategy, 'on_shutdown', None)
+                    if slot.disabled or callback is None:
+                        continue
+                    snapshot = await self._session.state.snapshot()
+                    slot.context._set_time(snapshot.timestamp)
+                    result = self._validate_result(slot, await asyncio.wait_for(
+                        callback(snapshot), self.runtime['strategy_timeout_seconds']))
+                    if any(not isinstance(item, OrderIntent) or not item.reduce_only
+                           or item.side != Side.SELL for item in result):
+                        raise ValueError('Shutdown callbacks may only reduce inventory')
+                    self._control('shutdown_recovery', strategy=slot.entry['name'], decision=result)
+                    for intent in result:
+                        await self._session.submit(intent)
+                        submitted = True
+                if not submitted and not self._unresolved():
+                    break
                 await asyncio.sleep(.002)
             if self._unresolved():
                 raise RuntimeError('shutdown grace expired with unresolved orders or undelivered reports')
@@ -659,7 +684,8 @@ class BotRunner:
             self._session.recorder.manifest['identity_mapping'] = deepcopy(self._identity_mapping)
             for slot in self.slots:
                 slot.context = StrategyContext(slot.entry['name'], 'PAPER', slot.entry['settings'],
-                    self.clock, config.paper_execution.seed, config.paper_execution.session_id)
+                    self.clock, config.paper_execution.seed, config.paper_execution.session_id,
+                    execution=config.paper_execution)
                 slot.strategy = self.factories[slot.entry['factory']](slot.context)
                 if not callable(getattr(slot.strategy, 'on_snapshot', None)) or not inspect.iscoroutinefunction(slot.strategy.on_snapshot):
                     raise ValueError('Strategy factory must return an async on_snapshot implementation')
