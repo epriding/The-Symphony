@@ -664,6 +664,11 @@ class RiskManager:
         portfolio = snapshot.portfolios[self.portfolio_id]
         for strategy, positions in portfolio.strategy_positions.items():
             for position in positions.values():
+                protected = self.matched_quantity(portfolio, strategy,
+                    position_key(position.exchange, position.market_id, position.outcome))
+                excess = max(0, position.size-protected)
+                if excess <= 1e-9:
+                    continue
                 bid = self.quote(snapshot, position.exchange, position.market_id, position.outcome, Side.SELL)
                 if bid is not None and bid > 0 and self.check_stop_loss(position, bid):
                     market = snapshot.markets.get(f"{position.exchange}:{position.market_id}")
@@ -674,8 +679,14 @@ class RiskManager:
                         outcome=position.outcome, side=Side.SELL,
                         price=round_quantity(bid, market.tick_size), strategy=strategy,
                         reduce_only=True, created_at=self.clock(), reason="stop_loss",
+                        close_fraction=excess/position.size,
                     ))
         return intents
+
+    @staticmethod
+    def matched_quantity(portfolio, strategy, key):
+        return sum(min(pair['fills']) for pair in portfolio.complement_pairs.values()
+                   if pair['strategy'] == strategy and key in pair['keys'])
 
 
 def gcd_all(values):

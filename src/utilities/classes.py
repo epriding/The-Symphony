@@ -491,6 +491,7 @@ class PortfolioState:
     daily_halted: bool = False
     daily_loss: float = 0.0
     daily_overshoot: float = 0.0
+    complement_pairs: Dict[str, Dict] = field(default_factory=dict)
 
     @property
     def requires_reconciliation(self) -> bool:

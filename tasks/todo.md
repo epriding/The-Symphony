@@ -76,16 +76,25 @@ Task completion requires its acceptance checks and verification, not just source
 
 ## T06: Preserve matched holdings to actual settlement
 
-- [ ] Implement T06.
+- [x] Implement T06a ledger protection.
+- T06b below separately handles recovery during partial settlement (five-file limit).
+
 - Description: Make matched quantities visible to centralized exit checks and maintain authoritative per-venue payout accounting.
 - Acceptance:
-  - [ ] Exempt only confirmed matched quantities from single-leg stop-loss sales; reject fake group exemptions and keep unmatched excess eligible for recovery.
-  - [ ] Credit each venue's authoritative settlement exactly once; expiry, shared sources, or an expected $1 combined payout never credit cash on their own.
-  - [ ] Handle delayed or differing venue outcomes, fee corrections, and partial settlements without discarding inventory or treating held capital as spendable.
+  - [x] Exempt only confirmed matched quantities from single-leg stop-loss sales; reject fake group exemptions and keep unmatched excess eligible for recovery.
+  - [x] Credit each venue's authoritative settlement exactly once; expiry, shared sources, or an expected $1 combined payout never credit cash on their own.
+  - [x] Handle delayed or differing venue outcomes, fee corrections, and partial settlements without discarding inventory or treating held capital as spendable.
 - Verify: `python3 -m pytest -q tests/test_complement_settlement.py tests/test_paper_trading.py tests/test_order_lifecycle.py`.
 - Dependencies: T04, T05.
 - Likely files: `src/market_decisions/risk_manager.py`, `src/market_decisions/order_coordinator.py`, `src/utilities/trading_state.py`, `src/paper_trading/session.py`, `tests/test_complement_settlement.py`.
 - Estimated scope: medium, five files.
+
+## T06b: Keep recovery settlement-aware
+
+- [ ] Reconcile only unmatched inventory when a confirmed pair has one settled venue; never sell its remaining matched holding.
+- Verify with an authoritative settlement before the next strategy timer.
+- Dependencies: T06a.
+- Files: strategy and recovery tests.
 
 ## Checkpoint B: Complete one window in paper
 

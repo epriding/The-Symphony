@@ -192,6 +192,13 @@ class OrderCoordinator:
                 if asynchronous:
                     # Local queue insertion cannot dispatch until locks release.
                     order_ids = self.paper_engine.enqueue_batch(batch, decision.orders, snapshot.markets)
+                    if batch.min_net_profit_per_pair is not None:
+                        async with self.state.lock:
+                            portfolio.complement_pairs[batch.batch_id] = dict(
+                                strategy=batch.legs[0].strategy,
+                                keys=[f'{leg.exchange}:{leg.market_id}:{leg.outcome}' for leg in batch.legs],
+                                orders=[f'{leg.exchange}:{oid}' for leg, oid in zip(batch.legs, order_ids)],
+                                fills=[0.0, 0.0])
                 else:
                     records = await self._simulate_paper_batch(decision, snapshot, manager)
                     async with self.state.lock:

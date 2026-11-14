@@ -526,6 +526,9 @@ class TradingState:
 
     def _remember_fill(self, portfolio, order_key, cumulative_quantity, fill):
         portfolio.filled_by_order[order_key] = cumulative_quantity
+        for pair in portfolio.complement_pairs.values():
+            if order_key in pair['orders']:
+                pair['fills'][pair['orders'].index(order_key)] = cumulative_quantity
         portfolio.fill_notional_by_order[order_key] = fill.total_notional
         portfolio.fees_by_order[order_key] = fill.total_fees
 
@@ -571,6 +574,9 @@ class TradingState:
                     )
                     self._apply_order_update(record)
             portfolio.settlements.add(key)
+            for batch_id, pair in list(portfolio.complement_pairs.items()):
+                if all(item.rsplit(':', 1)[0] in portfolio.settlements for item in pair['keys']):
+                    del portfolio.complement_pairs[batch_id]
             self.history_revision += 1
 
     async def prepare_history_update(self, incoming, approved=None, execution_id=None, fill_quantity=None):
