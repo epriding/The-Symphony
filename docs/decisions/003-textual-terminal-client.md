@@ -44,8 +44,9 @@ would be less explicit than the shared structured provider contract.
 
 ## Verification and consequences
 
-The [acceptance trace](../verification/terminal-ui.md) links transport, Pilot,
-real-provider and PTY tests. Detach, Ctrl-C and client kill are followed by
+The [transport](../../tests/test_bot_client.py), [UI](../../tests/test_bot_tui.py)
+and [PTY process](../../tests/test_bot_tui_process.py) tests exercise the client
+against the provider. Detach, Ctrl-C and client kill are followed by
 reattachment to the same synthetic session with advancing inputs and risk.
 An experimental mutation verifies detection of a command sent after closure.
 The measured cooperative buffer reservation excludes Textual/RSS overhead.

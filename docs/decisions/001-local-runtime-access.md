@@ -3,8 +3,8 @@
 ## Status and date
 
 Accepted, 2026-11-11. The module boundaries and provider contract were approved
-before implementation. See [the confirmed intent](../intent/trading-bot-tui.md)
-and [capability map](../../CAPABILITY-MAP.md).
+before implementation. The supported lifecycle and interface are documented in
+[the protocol reference](../BOT_CONTROL_PROTOCOL.md).
 
 ## Context
 

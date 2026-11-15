@@ -17,7 +17,7 @@ observations and controls to human and agent clients. Its process runs
 independently of its clients. The [Textual terminal interface](BOT_TUI.md)
 attaches to this provider. The structured agent command-line client remains
 a separate, unimplemented module.
-The [approved module map](../CAPABILITY-MAP.md) records those boundaries.
+Both clients use the same service observations and control contract.
 
 ## Start a service, then a session
 
@@ -257,5 +257,5 @@ Tests use offline feeds, real Unix sockets, actual slow-reader backpressure,
 blocked artifact writes and separate processes that kill/reconnect clients.
 The [decision record](decisions/001-local-runtime-access.md) explains ownership
 and access choices; [history schema 2](decisions/002-deterministic-history-order.md)
-explains the archive/replay prerequisite. API and acceptance details live in
-[the provider specification](../SPEC-runtime-access.md).
+explains the archive/replay behavior. Detailed API semantics and bounds live in
+[the protocol reference](BOT_CONTROL_PROTOCOL.md).

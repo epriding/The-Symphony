@@ -183,8 +183,10 @@ NO_COLOR=1 PYTHONIOENCODING=ascii venv/bin/python main.py tui \
 The client bounds frames, decoded objects, pages and concurrent work. Its
 8 MiB cooperative data/buffer budget excludes framework allocations and is
 not a promise about process RSS. Request/response and provider limits are in
-[the provider specification](../SPEC-runtime-access.md).
+[the protocol reference](BOT_CONTROL_PROTOCOL.md).
 
-[Verification and acceptance trace](verification/terminal-ui.md) records the
-tested behavior, actual PTY lifecycle checks and review limitations. No live
+The [transport tests](../tests/test_bot_client.py),
+[UI tests](../tests/test_bot_tui.py) and
+[process tests](../tests/test_bot_tui_process.py) exercise terminal behavior,
+including independent service lifetime and terminal restoration. No live
 execution, strategy editing, repair workflow or deployment is included.
