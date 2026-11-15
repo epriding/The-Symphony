@@ -18,8 +18,27 @@ _PATTERNS = (
     (re.compile(r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----", re.S), "[REDACTED PRIVATE KEY]"),
     (re.compile(r"\b\d{7,}:[A-Za-z0-9_-]{20,}"), "[REDACTED]"),
     (re.compile(r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/=-]+"), r"\g<1>[REDACTED]"),
-    (re.compile(r'''(?i)((?:[\w.-]*(?:secret|token|password|api[_-]?key|access[_-]?key|authorization|signature|private[_-]?key)[\w.-]*)["']?\s*[:=]\s*["']?)([^\s,;}'"&]+)'''), r"\g<1>[REDACTED]"),
 )
+_FIELD_PREFIX = re.compile(r'''(?<![\w.-])([\w.-]+)["']?\s*[:=]\s*["']?''')
+_FIELD_SECRET = re.compile(r'secret|token|password|api[_-]?key|access[_-]?key|authorization|signature|private[_-]?key', re.I)
+_FIELD_VALUE = re.compile(r'''[^\s,;}'"&]+''')
+
+
+def _redact_assignments(text):
+    # Scan each whole identifier once. The old unanchored greedy prefix tried
+    # every suffix of a long word, even when it contained no credential name.
+    parts = []
+    consumed = 0
+    for match in _FIELD_PREFIX.finditer(text):
+        if match.start() < consumed or not _FIELD_SECRET.search(match[1]):
+            continue
+        value = _FIELD_VALUE.match(text, match.end())
+        if value is None:
+            continue
+        parts.extend((text[consumed:match.end()], '[REDACTED]'))
+        consumed = value.end()
+    parts.append(text[consumed:])
+    return ''.join(parts)
 
 
 def redact(value):
@@ -31,7 +50,7 @@ def redact(value):
         text = text.replace(secret, "[REDACTED]")
     for pattern, replacement in _PATTERNS:
         text = pattern.sub(replacement, text)
-    return text
+    return _redact_assignments(text)
 
 
 class SafeFormatter(logging.Formatter):

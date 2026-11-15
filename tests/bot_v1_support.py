@@ -168,10 +168,15 @@ class ControlledFeed:
             yield None
 
 
-async def eventually(predicate, *, timeout=2.0):
+async def eventually(predicate, *, timeout=2.0, task=None):
     """Yield until a visible condition holds, with a finite test-harness bound."""
     async def wait():
         while not predicate():
+            if task is not None and task.done():
+                # Preserve an early runner failure rather than hiding it behind
+                # a later timeout waiting for a state it can no longer reach.
+                await task
+                raise AssertionError('Runner exited before the expected condition')
             await asyncio.sleep(.001)
     await asyncio.wait_for(wait(), timeout)
 

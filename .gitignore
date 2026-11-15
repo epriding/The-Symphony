@@ -8,3 +8,18 @@ venv/
 
 # Personal owner notes.
 /notes.md
+
+# Local TUI planning, build reports and decision-trail artifacts.
+/.audit/
+/CAPABILITY-MAP.md
+/SPEC.md
+/SPEC-runtime-access.md
+/SPEC-terminal-ui.md
+/tasks/plan.md
+/tasks/todo.md
+/tasks/tui-readability-plan.md
+/tasks/tui-readability-todo.md
+/docs/intent/trading-bot-tui.md
+/docs/verification/terminal-ui.md
+/docs/verification/terminal-ui-readability.md
+/docs/verification/tui-empty-selection.md

@@ -103,7 +103,8 @@ async def _create_public_feeds(settings, limits, *, timeout):
 
 class BotRunner:
     def __init__(self, config, *, output_directory, feeds=None,
-                 strategy_factories=None, clock=None):
+                 strategy_factories=None, clock=None, operator_controls=False,
+                 operator_observer=None):
         self.config = validate_bot_config(config, require_runtime=True)
         self.output_directory = validate_output_directory(output_directory)
         self.runtime = self.config['runtime']
@@ -127,6 +128,11 @@ class BotRunner:
         self.clock = _SessionClock(clock or RealClock())
         self._used = False
         self._stop = asyncio.Event()
+        self._operator_controls = operator_controls
+        self._operator_observer = operator_observer
+        self._operator_state = 'running'
+        self._pause_cancellation_started = False
+        self._resume_requested = False
         self._wake = asyncio.Event()
         self._session = None
         self._store = None
@@ -164,8 +170,60 @@ class BotRunner:
         self._stop.set()
         self._wake.set()
 
+    @property
+    def operator_state(self):
+        return self._operator_state
+
+    def request_pause(self):
+        if not self._operator_controls:
+            raise ValueError('Operator controls require an explicitly enabled runner')
+        if self._stop.is_set() or self._stopping:
+            return
+        self._resume_requested = False
+        if self._operator_state == 'running':
+            self._operator_state = 'pausing'
+            self._pause_cancellation_started = False
+            self._wake.set()
+
+    def request_resume(self):
+        if self._stop.is_set() or self._stopping:
+            return
+        if not self._operator_controls:
+            raise ValueError('Operator controls require an explicitly enabled runner')
+        if self._operator_state == 'pausing':
+            raise ValueError('Pause has not quiesced')
+        self._resume_requested = self._operator_state == 'paused'
+        self._wake.set()
+
+    async def _apply_operator_control(self):
+        if self._stop.is_set() or self._stopping:
+            return
+        if self._operator_state == 'pausing' and not self._pause_cancellation_started:
+            self._control('operator_pause')
+            self._pause_cancellation_started = True
+            # Initiate cancellation at the barrier, but do not suspend the
+            # market/risk driver while async callback cleanup acknowledges it.
+            for slot in self.slots:
+                slot.pending = False
+                if slot.task is not None:
+                    task, slot.task = slot.task, None
+                    slot.timing = None
+                    self._zombies[task] = time.monotonic()+self.runtime['shutdown_grace_seconds']
+                    if not task.done():
+                        task.cancel()
+        if self._resume_requested:
+            self._resume_requested = False
+            self._operator_state = 'running'
+            self._dirty = True
+            self._control('operator_resume')
+
     def _control(self, action, **payload):
         self._session.record('runtime_control', dict(action=action, **payload))
+        self._observe_operator('control', dict(action=action, **payload))
+
+    def _observe_operator(self, kind, payload):
+        if self._operator_observer is not None:
+            self._operator_observer(self, kind, payload)
 
     async def _after_public(self, envelope):
         self._revision += 1
@@ -295,7 +353,8 @@ class BotRunner:
             self._last_status = current
 
     async def _notify_and_dispatch(self):
-        if self._stopping or self._stop.is_set() or not self._initial_ready:
+        if (self._stopping or self._stop.is_set() or not self._initial_ready
+                or self._operator_state != 'running'):
             return
         if self._dirty:
             self._dirty = False
@@ -410,6 +469,10 @@ class BotRunner:
                 del self._zombies[task]
             elif time.monotonic() >= self._zombies[task]:
                 raise RuntimeError('strategy cancellation exceeded shutdown grace')
+        if self._operator_state == 'pausing' and self._pause_cancellation_started and not self._zombies:
+            self._operator_state = 'paused'
+            for slot in self.slots:
+                slot.snapshot_bytes = 0
         # A cancelled callback may still own its copy until it acknowledges cancellation.
         if not self._zombies:
             for slot in self.slots:
@@ -436,8 +499,9 @@ class BotRunner:
             slot.snapshot_bytes = 0
             ready = self._status['strategies'][slot.entry['name']]['ready']
             self._control('completion', strategy=slot.entry['name'], dispatch=slot.dispatch,
-                          decision=result, accepted=ready and not self._stopping and not self._stop.is_set())
-            if ready and not self._stopping and not self._stop.is_set():
+                          decision=result, accepted=ready and not self._stopping and not self._stop.is_set()
+                          and self._operator_state == 'running')
+            if ready and not self._stopping and not self._stop.is_set() and self._operator_state == 'running':
                 for intent in result:
                     await self._session.submit(intent)
 
@@ -460,6 +524,8 @@ class BotRunner:
 
     async def _drive(self, *, allow_work=True):
         self.clock.refresh()
+        if allow_work:
+            await self._apply_operator_control()
         if self._producer_error:
             raise self._producer_error
         # Bound each ingestion batch, then issue one latest notification. Timer
@@ -489,6 +555,7 @@ class BotRunner:
                     self._event_bytes -= item[2]
                 self._queue.task_done()
         await self._session.advance(self.clock())
+        self._observe_operator('tick', {})
         await self._compact()
         self._check_memory()
         self._readiness()
@@ -526,11 +593,14 @@ class BotRunner:
                 slot.task = None
                 slot.timing = None
         for task in tasks:
+            if self._operator_controls:
+                self._zombies[task]=time.monotonic()+self.runtime['shutdown_grace_seconds']
             if not task.done():
                 task.cancel()
         if tasks:
             done, pending = await asyncio.wait(tasks, timeout=self.runtime['shutdown_grace_seconds'])
             for task in done:
+                self._zombies.pop(task,None)
                 if not task.cancelled():
                     task.exception()
             if pending:
@@ -609,6 +679,15 @@ class BotRunner:
             config.strategy_portfolios = {slot.entry['name']: 'PAPER' for slot in self.slots}
             self._session = PaperSession(config, self.clock, self.output_directory,
                 history_store=self._store, limits=self.limits, runtime_config=self.config)
+            if self._operator_controls:
+                self._session.recorder.schema_version = 4
+                self._session.recorder.manifest['schema_version'] = 4
+            if self._operator_observer is not None:
+                original_sink = self._session.engine.audit_sink
+                def observe_execution(row):
+                    original_sink(row)
+                    self._observe_operator('execution', row)
+                self._session.engine.audit_sink = observe_execution
             self._session.after_public = self._after_public
             if self.feeds is None:
                 if self.runtime['source'] != 'public':
@@ -626,6 +705,7 @@ class BotRunner:
                     market = await asyncio.wait_for(feed.get_market(identifier), self.runtime['startup_timeout_seconds'])
                     if market.exchange != feed.exchange:
                         raise ValueError('Metadata venue does not match subscription')
+                    self._observe_operator('metadata',dict(exchange=market.exchange,market_id=market.market_id))
                     self._identity_mapping[f'{feed.exchange}:{identifier}'] = f'{market.exchange}:{market.market_id}'
                     await self._session.add_market(market)
             self._session.recorder.manifest['identity_mapping'] = deepcopy(self._identity_mapping)

@@ -49,7 +49,9 @@ def benchmark_config():
              required_markets=[f'{v}:m' for v in VENUES], settings={})],
         runtime=dict(source='synthetic', observe_only=False, startup_timeout_seconds=2,
              strategy_timeout_seconds=2, risk_interval_seconds=.02,
-             shutdown_grace_seconds=.5, limits=dict(max_strategies=2, max_markets=2,
+             # Allocation tracing slows durable archive work. This workload
+             # measures retention/accounting, not subsecond storage latency.
+             shutdown_grace_seconds=2, limits=dict(max_strategies=2, max_markets=2,
              max_active_orders=8, max_positions=4, max_intents_per_callback=4,
              max_hot_history_records=4, max_archive_cache_records=4,
              max_event_bytes=262144, memory_budget_bytes=64*1024*1024)))

@@ -467,7 +467,7 @@ class BoundedReporter(Reporter):
             audit_window_events=len(self.engine.audit), audit_total_events=sum(self.engine.diagnostics.values()),
             full_audit_streamed=self.engine.audit_path is not None, by_venue=venues,
             by_strategy=strategies, by_time_in_force={key: count for key, count in orders.get('tif', {}).items() if count},
-            history=dict(scope='full-session', schema_version=1, database='history.sqlite3',
+            history=dict(scope='full-session', schema_version=self.history_store.schema_version, database='history.sqlite3',
                 hot_view_scope='active state plus configured terminal history window', details=data['details']))
 
     def summary(self, state):

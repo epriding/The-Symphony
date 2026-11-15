@@ -24,6 +24,11 @@ algorithms and real-money execution are outside this runtime's scope.
 
 ## Relationships
 
+The [local control guide](BOT_CONTROL.md) describes independent client access,
+shared views, operator pause/resume, service lifecycle and diagnostic findings.
+Only explicitly operator-enabled runs use capture schema 4 for these controls;
+the existing run/smoke paths retain schema 3. Readers accept input schemas 1–4.
+
 The [simulator guide](PAPER_TRADING.md) explains execution, fees and existing
 session APIs. [Code ownership](CODE_GUIDE.md) explains the coordinator and ledger.
 
@@ -203,6 +208,17 @@ as detail rows without counting as additional executions. Working snapshots
 contain active state plus the configured hot history; use paged archive/history
 artifacts for complete detail. The runner summary never returns growing per-order
 or per-fill arrays. Legacy paper commands retain their established summary shape.
+
+History export schema 2 defines `accounting_order` as a one-based ordinal within
+each detail stream, including correction rows. It is not a cross-stream clock.
+SQLite's global record sequence remains the internal archive paging key. This
+keeps detail hashes independent of unrelated stream flush timing; rollback and
+retry retain transactional sequence behavior. Older history schema 1 exports
+used global SQLite row IDs and could have different detail hashes after replay
+despite identical account and execution data. Existing capture input schemas
+remain readable, but replay emits the current history format: schema-1 history
+hashes are not byte-compatibility promises for a schema-2 replay. Original
+captures and their history artifacts remain read-only.
 
 Schema-3 replay preserves original named settings, controlled time/IDs/RNG and
 recorded dispatch, coalescing, completion, risk and shutdown order. The public

@@ -2,11 +2,54 @@
 import argparse
 import asyncio
 import json
+import os
 import signal
 import sys
 
 from src.bot import BotRunner, load_bot_config, replay_bot
 from src.utilities.logger import redact
+
+
+async def _serve(args: argparse.Namespace, *, force_exit_on_unclean: bool = False) -> None:
+    from src.operator.service import ControlService
+    if args.smoke:
+        service=ControlService(smoke=True,output_root=args.output_root)
+    else:
+        config=load_bot_config(args.config)
+        if config.get('runtime',{}).get('source')!='public':
+            raise ValueError('serve --config requires a public source; use --smoke for offline fixtures')
+        service=ControlService(config,output_root=args.output_root)
+    loop=asyncio.get_running_loop()
+    stopped=asyncio.Event()
+    installed=[]
+    try:
+        try:
+            await service.start(args.socket)
+        except OSError:
+            raise ValueError('Cannot bind the private control socket') from None
+        for sig in (signal.SIGINT,signal.SIGTERM):
+            loop.add_signal_handler(sig,stopped.set)
+            installed.append(sig)
+        print('Bot control service ready (idle; connect a client to start a session).',
+            file=sys.stderr,flush=True)
+        await stopped.wait()
+    finally:
+        try:
+            try:
+                await service.close()
+            except BaseException:
+                if force_exit_on_unclean and service.requires_forced_exit():
+                    # asyncio.run otherwise joins cancellation-resistant tasks
+                    # or blocked executor threads indefinitely. This policy is
+                    # restricted to the standalone service process, after its
+                    # normal cleanup deadlines; the library never exits callers.
+                    print('Runtime failed: control-service cleanup incomplete; exiting with failure.',
+                        file=sys.stderr,flush=True)
+                    os._exit(1)
+                raise
+        finally:
+            for sig in installed:
+                loop.remove_signal_handler(sig)
 
 
 async def _execute(args):
@@ -70,8 +113,26 @@ def main(argv=None):
     replay = commands.add_parser('replay')
     replay.add_argument('--capture', required=True)
     replay.add_argument('--output', required=True)
+    serve=commands.add_parser('serve',help='Run an initially idle local paper-bot control service')
+    mode=serve.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--smoke',action='store_true')
+    mode.add_argument('--config')
+    serve.add_argument('--socket',required=True)
+    serve.add_argument('--output-root',required=True)
+    tui=commands.add_parser('tui',help='Attach a human terminal to the local bot service')
+    tui.add_argument('--socket',required=True)
     try:
-        summary = asyncio.run(_execute(parser.parse_args(argv)))
+        args=parser.parse_args(argv)
+        if args.command=='tui':
+            if (not sys.stdin.isatty() or not sys.stdout.isatty()
+                    or os.environ.get('TERM','dumb') in ('','dumb','unknown')):
+                raise ValueError('tui requires an interactive terminal with a usable TERM')
+            from src.operator.tui import run_tui
+            return asyncio.run(run_tui(args.socket))
+        if args.command=='serve':
+            asyncio.run(_serve(args,force_exit_on_unclean=True))
+            return 0
+        summary = asyncio.run(_execute(args))
         print(json.dumps({key: summary[key] for key in ('session_id', 'submitted', 'accounts', 'assumptions')}, indent=2))
         return 0
     except ValueError as error:
