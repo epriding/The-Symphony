@@ -81,4 +81,6 @@ Replay uses captured inputs and decisions with no network reads. It cannot inven
 
 ## Verification and operational evidence
 
-See [tasks/todo.md](../tasks/todo.md) for the acceptance checks and [COMPLEMENT_VERIFICATION.md](COMPLEMENT_VERIFICATION.md) for the exact build/run evidence and any remaining operational limitation. Synthetic acceptance tests show accounting and lifecycle behavior, not the existence of a tradable public edge.
+See [COMPLEMENT_VERIFICATION.md](COMPLEMENT_VERIFICATION.md) for acceptance coverage, exact build/run evidence, and operational limitations. Synthetic acceptance tests show accounting and lifecycle behavior, not the existence of a tradable public edge.
+
+The remaining live-paper acceptance check is to supply the existing public-feed credentials, run across at least two actual window transitions, inspect the results, and replay the completed capture. The recorded startup attempt could not perform this check because credentials were missing. Review those live results before expanding to resting-entry or delayed-pair strategies.
