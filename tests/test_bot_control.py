@@ -34,8 +34,13 @@ def cancellation_result_factory(context):
 
 
 @pytest.mark.asyncio
-async def test_pause_discards_late_result_and_replays_cancellation_boundary(tmp_path):
+async def test_pause_discards_late_result_and_replays_cancellation_boundary(
+        tmp_path, delayed_history_startup):
     config = valid_config(strategies=[strategy_config('alpha', factory='late')])
+    # This checks cancellation/replay semantics, not host storage speed. The
+    # capture's shutdown grace also bounds SQLite initialization in both replays.
+    config['runtime']['shutdown_grace_seconds'] = 2
+    config['runtime']['startup_timeout_seconds'] = 2
     clock = VirtualClock(START)
     feeds = [ControlledFeed(venue, clock=clock) for venue in VENUES]
     runner = BotRunner(config, output_directory=tmp_path / 'capture',
