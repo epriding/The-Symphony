@@ -17,6 +17,7 @@ venv/
 /SPEC-terminal-ui.md
 /tasks/plan.md
 /tasks/todo.md
+/tasks/plan.human.md
 /tasks/tui-readability-plan.md
 /tasks/tui-readability-todo.md
 /docs/intent/trading-bot-tui.md
