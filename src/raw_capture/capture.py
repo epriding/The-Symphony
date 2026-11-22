@@ -6,6 +6,11 @@ writer thread touches `records.jsonl` after start-up, and only the writer
 thread writes the manifest once it is running. A frame the queue cannot take
 is dropped; the writer sees the jump in sequence numbers and writes a gap
 record in its place.
+
+The queue is bounded twice: by item count (`queue_capacity`) and by the
+payload bytes it holds (`queue_bytes`). A frame larger than
+`max_payload_bytes` is never stored; a content-free marker takes its place so
+the writer can record an `oversize` gap for that one sequence number.
 """
 from hashlib import sha256
 from pathlib import Path
@@ -38,6 +43,8 @@ class RawCapture:
                             ('retry_interval_seconds', retry_interval_seconds)):
             if type(value) not in (int, float) or not 0 < value < float('inf'):
                 raise ValueError(f'{name} must be a positive finite number')
+        if queue_bytes < max_payload_bytes:
+            raise ValueError('queue_bytes must be at least max_payload_bytes')
         self.directory = Path(directory) / 'raw'
         self.config = dict(queue_capacity=queue_capacity, queue_bytes=queue_bytes,
                            max_payload_bytes=max_payload_bytes,
@@ -53,6 +60,7 @@ class RawCapture:
         self._lock = threading.Lock()
         self._queue = queue.Queue(maxsize=queue_capacity)
         self._last_assigned = 0
+        self._queued_bytes = 0
         self._closed = False
         self.dropped_queue_full = 0
 
@@ -93,15 +101,23 @@ class RawCapture:
         if type(payload) not in (str, bytes):
             raise ValueError('payload must be str or bytes')
         wall, monotonic_ns = self._wall(), self._monotonic_ns()
+        size = len(payload) if type(payload) is bytes else len(payload.encode('utf-8'))
+        if size > self.config['max_payload_bytes']:
+            payload, size = None, 0  # oversize marker: the writer records a gap, not the content
         with self._lock:
             if self._closed:
                 return
             self._last_assigned += 1
-            item = (self._last_assigned, venue, stream, connection_epoch, wall, monotonic_ns, payload)
+            if self._queued_bytes + size > self.config['queue_bytes']:
+                self.dropped_queue_full += 1
+                return
+            item = (self._last_assigned, venue, stream, connection_epoch, wall, monotonic_ns, payload, size)
             try:
                 self._queue.put_nowait(item)
             except queue.Full:
                 self.dropped_queue_full += 1
+                return
+            self._queued_bytes += size
 
     @property
     def last_assigned_seq(self):
@@ -149,13 +165,18 @@ class RawCapture:
             self.writer_error = error
 
     def _write_item(self, item):
-        seq, venue, stream, epoch, wall, monotonic_ns, payload = item
+        seq, venue, stream, epoch, wall, monotonic_ns, payload, size = item
+        with self._lock:
+            self._queued_bytes -= size
         if seq > self._expected:
             self._write_gap(self._expected, seq - 1, 'queue_full')
-        self._write_line(RawMessage(seq=seq, venue=venue, stream=stream, connection_epoch=epoch,
-                                    received_wall=wall, received_monotonic_ns=monotonic_ns,
-                                    payload=payload).to_line())
-        self._message_count += 1
+        if payload is None:
+            self._write_gap(seq, seq, 'oversize')
+        else:
+            self._write_line(RawMessage(seq=seq, venue=venue, stream=stream, connection_epoch=epoch,
+                                        received_wall=wall, received_monotonic_ns=monotonic_ns,
+                                        payload=payload).to_line())
+            self._message_count += 1
         self._expected = seq + 1
 
     def _write_gap(self, first, last, reason):

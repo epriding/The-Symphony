@@ -166,3 +166,56 @@ def test_invalid_settings_are_rejected_before_creating_files(tmp_path, overrides
     with pytest.raises(ValueError):
         make(tmp_path, **overrides)
     assert not (tmp_path / 'raw').exists()
+
+
+def test_byte_limit_drops_frames_that_would_overflow_it(tmp_path):
+    gate = paused()
+    capture = make(tmp_path, gate=gate, queue_bytes=10, max_payload_bytes=10)
+    for payload in ('aaaa', 'bbbb', 'cccc', b'dd', 'é'):   # 4 + 4 fit; 4 does not; 2 fits; 'é' is 2 bytes
+        capture.offer('synthetic', 'test', 0, payload)
+    gate.set()
+    assert capture.close()
+    report = validate_raw_capture(tmp_path)
+    assert report.missing_ranges == [dict(first_seq=3, last_seq=3, reason='queue_full'),
+                                     dict(first_seq=5, last_seq=5, reason='queue_full')]
+    assert [r.payload for r in open_raw_capture_incomplete(tmp_path)] == ['aaaa', 'bbbb', b'dd']
+    assert capture.dropped_queue_full == 2
+
+
+def test_byte_limit_frees_space_as_the_writer_drains(tmp_path):
+    gate = paused()
+    capture = make(tmp_path, gate=gate, queue_bytes=8, max_payload_bytes=8)
+    capture.offer('synthetic', 'test', 0, 'x' * 8)
+    capture.offer('synthetic', 'test', 0, 'y')          # no room
+    gate.set()
+    eventually(capture._queue.empty)
+    eventually(lambda: capture._queued_bytes == 0)
+    capture.offer('synthetic', 'test', 0, 'z' * 8)      # room again
+    assert capture.close()
+    assert line_kinds(tmp_path) == [1, 'gap', 3]
+
+
+def test_oversize_frame_becomes_a_gap_without_content(tmp_path):
+    capture = make(tmp_path, max_payload_bytes=4)
+    capture.offer('synthetic', 'test', 0, 'ok')
+    capture.offer('synthetic', 'test', 0, 'secret-and-too-long')
+    capture.offer('synthetic', 'test', 0, 'ééé')           # 6 UTF-8 bytes, 3 characters
+    capture.offer('synthetic', 'test', 0, b'1234')
+    assert capture.close()
+    report = validate_raw_capture(tmp_path)
+    assert report.missing_ranges == [dict(first_seq=2, last_seq=2, reason='oversize'),
+                                     dict(first_seq=3, last_seq=3, reason='oversize')]
+    assert report.dropped == {'oversize': 2, 'queue_full': 0, 'writer_error': 0}
+    assert b'secret' not in (tmp_path / 'raw' / 'records.jsonl').read_bytes()
+
+
+def test_queue_bytes_must_hold_one_maximum_frame(tmp_path):
+    with pytest.raises(ValueError, match='queue_bytes'):
+        make(tmp_path, queue_bytes=100, max_payload_bytes=101)
+
+
+def open_raw_capture_incomplete(tmp_path):
+    """Messages from a capture that has gaps (open_raw_capture refuses those)."""
+    from src.raw_capture.records import parse_line
+    lines = (tmp_path / 'raw' / 'records.jsonl').read_bytes().splitlines(keepends=True)
+    return [record for record in map(parse_line, lines) if isinstance(record, RawMessage)]
