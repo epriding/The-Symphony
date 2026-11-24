@@ -513,3 +513,51 @@ def test_offer_never_blocks_or_raises_while_degraded(tmp_path):
     assert capture.close()
     assert validate_raw_capture(tmp_path).finalized
 
+
+# ---- bounded shutdown ---------------------------------------------------------
+
+def test_close_with_a_full_queue_finishes_in_time(tmp_path):
+    gate = paused()
+    capture = make(tmp_path, gate=gate, queue_capacity=500)
+    for n in range(2000):
+        capture.offer('synthetic', 'test', 0, f'{n}')
+    gate.set()
+    started = time.monotonic()
+    assert capture.close(timeout=5.0)
+    assert time.monotonic() - started < 5.0
+    report = validate_raw_capture(tmp_path)
+    assert report.message_count == 500
+    assert report.missing_ranges == [dict(first_seq=501, last_seq=2000, reason='queue_full')]
+
+
+class HangingFsync(FileOps):
+    """An fsync that blocks until released, like a disk that stopped responding."""
+    def __init__(self):
+        self.release = threading.Event()
+
+    def fsync(self, fd):
+        self.release.wait()
+        super().fsync(fd)
+
+
+def test_close_returns_false_when_the_writer_is_stuck(tmp_path):
+    ops = HangingFsync()
+    capture = make(tmp_path, file_ops=ops)
+    try:
+        capture.offer('synthetic', 'test', 0, 'stuck')
+        started = time.monotonic()
+        assert not capture.close(timeout=0.2)
+        assert time.monotonic() - started < 1.0
+        assert validate_raw_capture(tmp_path).verdict == 'incomplete'
+    finally:
+        ops.release.set()
+
+
+def test_stuck_writer_that_finishes_later_still_finalizes(tmp_path):
+    ops = HangingFsync()
+    capture = make(tmp_path, file_ops=ops)
+    capture.offer('synthetic', 'test', 0, 'late')
+    assert not capture.close(timeout=0.1)
+    ops.release.set()
+    eventually(lambda: capture.status == 'closed')
+    assert validate_raw_capture(tmp_path).verdict == 'complete'
