@@ -391,25 +391,25 @@ class RawCapture:
         except OSError:
             pass   # the fsync above already confirmed the data is on disk
         self._fd = None
-        # The capture counts as finalized only once the manifest saying so is on disk.
-        self._finalized = True
-        self._status = 'closed'
+        # Publish "closed" in memory only after the manifest saying so is on disk.
         try:
-            self._write_manifest()
+            self._write_manifest(status='closed', finalized=True)
         except OSError as error:
             self._fail(error)
             return
+        self._finalized = True
+        self._status = 'closed'
         self._notify('closed')
 
     def _set_status(self, status):
         """Record a status change in the manifest and tell the owner. Never raises."""
         if status == self._status:
             return
-        self._status = status
         try:
-            self._write_manifest()
+            self._write_manifest(status=status)
         except OSError:
             pass   # the status still changes in memory; the next manifest write will carry it
+        self._status = status
         self._notify(status)
 
     def _notify(self, status):
@@ -419,18 +419,21 @@ class RawCapture:
             except Exception:
                 pass
 
-    def _write_manifest(self):
+    def _write_manifest(self, *, status=None, finalized=None):
+        """Atomically replace the manifest; `status` and `finalized` override the current values."""
+        status = self._status if status is None else status
+        finalized = self._finalized if finalized is None else finalized
         missing = sum(self._dropped.values())
         manifest = dict(
             format=FORMAT_NAME, format_version=FORMAT_VERSION, session_id=self._session_id,
             code_revision=self._code_revision, started_wall=self._started_wall,
-            ended_wall=self._ended_wall if self._finalized else None, status=self._status,
-            finalized=self._finalized, complete=self._finalized and missing == 0,
+            ended_wall=self._ended_wall if finalized else None, status=status,
+            finalized=finalized, complete=finalized and missing == 0,
             config=self.config, max_line_bytes=max_line_bytes(self.config['max_payload_bytes']),
             message_count=self._message_count, gap_count=self._gap_count, missing_count=missing,
             dropped=dict(self._dropped), last_assigned_seq=self._expected - 1,
-            records_sha256=self._digest.hexdigest() if self._finalized else None,
-            records_bytes=self._bytes if self._finalized else None)
+            records_sha256=self._digest.hexdigest() if finalized else None,
+            records_bytes=self._bytes if finalized else None)
         path = self.directory / 'manifest.json'
         temporary = path.with_suffix('.tmp')
         with open(temporary, 'w', encoding='utf-8') as output:

@@ -243,7 +243,7 @@ def test_failed_open_leaves_nothing_behind_and_allows_a_retry(tmp_path):
 
 
 def test_failed_first_manifest_leaves_nothing_behind(tmp_path, monkeypatch):
-    def fail(self):
+    def fail(self, **_):
         (self.directory / 'manifest.tmp').write_text('{')   # as if the write died part-way
         raise OSError('no space for manifest')
     monkeypatch.setattr(RawCapture, '_write_manifest', fail)
@@ -328,10 +328,10 @@ def test_final_manifest_failure_means_not_finalized(tmp_path, monkeypatch):
     capture.offer('synthetic', 'test', 0, 'one')
     original = RawCapture._write_manifest
 
-    def fail_when_finalizing(self):
-        if self._finalized:
+    def fail_when_finalizing(self, **changes):
+        if changes.get('finalized'):
             raise OSError('no space for manifest')
-        original(self)
+        original(self, **changes)
     monkeypatch.setattr(RawCapture, '_write_manifest', fail_when_finalizing)
     assert not capture.close()
     assert capture.status == 'failed' and isinstance(capture.writer_error, OSError)
@@ -512,3 +512,4 @@ def test_offer_never_blocks_or_raises_while_degraded(tmp_path):
     eventually(lambda: capture.status == 'writing')
     assert capture.close()
     assert validate_raw_capture(tmp_path).finalized
+
