@@ -11,6 +11,11 @@ The queue is bounded twice: by item count (`queue_capacity`) and by the
 payload bytes it holds (`queue_bytes`). A frame larger than
 `max_payload_bytes` is never stored; a content-free marker takes its place so
 the writer can record an `oversize` gap for that one sequence number.
+
+The writer opens `records.jsonl` without Python's file buffer and batches
+lines itself, so it always knows exactly which bytes it has handed to the
+operating system. After each successful fsync it keeps a checkpoint: the
+file size, the sequence covered, the digest and the counters at that point.
 """
 from hashlib import sha256
 from pathlib import Path
@@ -25,6 +30,33 @@ from .validator import FORMAT_NAME, max_line_bytes
 
 # How long the writer waits for a frame before checking the fsync timer and the stop flag.
 POLL_SECONDS = 0.05
+# The writer hands its batch to the operating system once it reaches this size, or when idle.
+BATCH_BYTES = 64 * 1024
+
+
+class FileOps:
+    """The file operations the writer uses. Tests replace them to inject disk errors."""
+
+    def open(self, path, *, create):
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CLOEXEC
+        if create:
+            flags |= os.O_CREAT | os.O_EXCL
+        return os.open(path, flags, 0o644)
+
+    def write(self, fd, data):
+        return os.write(fd, data)
+
+    def fsync(self, fd):
+        os.fsync(fd)
+
+    def truncate(self, fd, size):
+        os.ftruncate(fd, size)
+
+    def size(self, fd):
+        return os.fstat(fd).st_size
+
+    def close(self, fd):
+        os.close(fd)
 
 
 def _positive_integer(value, name):
@@ -35,7 +67,8 @@ def _positive_integer(value, name):
 class RawCapture:
     def __init__(self, directory, *, session_id, queue_capacity, queue_bytes, max_payload_bytes,
                  fsync_interval_seconds, retry_interval_seconds=1.0, code_revision='unknown',
-                 opener=open, wall=time.time, monotonic_ns=time.monotonic_ns, _gate=None):
+                 on_status=None, file_ops=None, wall=time.time, monotonic_ns=time.monotonic_ns,
+                 _gate=None):
         for name, value in (('queue_capacity', queue_capacity), ('queue_bytes', queue_bytes),
                             ('max_payload_bytes', max_payload_bytes)):
             _positive_integer(value, name)
@@ -57,6 +90,8 @@ class RawCapture:
                            retry_interval_seconds=retry_interval_seconds)
         self._session_id = session_id
         self._code_revision = code_revision
+        self._on_status = on_status
+        self._files = file_ops or FileOps()
         self._wall = wall
         self._monotonic_ns = monotonic_ns
         self._gate = _gate
@@ -72,7 +107,8 @@ class RawCapture:
         # Owned by the writer thread once it starts.
         self._expected = 1
         self._digest = sha256()
-        self._bytes = 0
+        self._bytes = 0                  # bytes appended, whether still batched or already written
+        self._batch = bytearray()        # appended but not yet handed to the operating system
         self._message_count = 0
         self._gap_count = 0
         self._dropped = {'oversize': 0, 'queue_full': 0, 'writer_error': 0}
@@ -82,12 +118,13 @@ class RawCapture:
         self._ended_wall = None
         self._final_assigned = None
         self._last_fsync = time.monotonic()
+        self._checkpoint = self._snapshot()
         self.writer_error = None
 
         self.directory.mkdir(parents=True, exist_ok=False)
-        self._records = None
+        self._fd = None
         try:
-            self._records = opener(self.directory / 'records.jsonl', 'xb')
+            self._fd = self._files.open(self.directory / 'records.jsonl', create=True)
             self._write_manifest()
             self._stop = threading.Event()
             self._thread = threading.Thread(target=self._run, name='raw-capture-writer', daemon=True)
@@ -101,9 +138,9 @@ class RawCapture:
 
         Only removes the files this constructor creates, then the folder if it is empty.
         """
-        if self._records is not None:
+        if self._fd is not None:
             try:
-                self._records.close()
+                self._files.close(self._fd)
             except OSError:
                 pass
         for name in ('records.jsonl', 'manifest.tmp', 'manifest.json'):
@@ -184,13 +221,27 @@ class RawCapture:
                     item = None
                 if item is not None:
                     self._write_item(item)
-                if time.monotonic() - self._last_fsync >= interval:
-                    self._fsync()
+                if item is None or len(self._batch) >= BATCH_BYTES:
+                    self._flush()
+                if self._bytes != self._checkpoint['bytes'] and time.monotonic() - self._last_fsync >= interval:
+                    self._sync()
                 if item is None and self._stop.is_set() and self._queue.empty():
                     break
             self._finish()
-        except BaseException as error:  # Recorded for the owner; task-level recovery handles OSError.
-            self.writer_error = error
+        except BaseException as error:
+            # Decision 1a: an unexpected error stops capture and is reported, never hidden as a gap.
+            self._fail(error)
+
+    def _fail(self, error):
+        self.writer_error = error
+        self._finalized = False
+        if self._fd is not None:
+            try:
+                self._files.close(self._fd)
+            except OSError:
+                pass
+            self._fd = None
+        self._set_status('failed')
 
     def _write_item(self, item):
         seq, venue, stream, epoch, wall, monotonic_ns, payload, size = item
@@ -201,37 +252,74 @@ class RawCapture:
         if payload is None:
             self._write_gap(seq, seq, 'oversize')
         else:
-            self._write_line(RawMessage(seq=seq, venue=venue, stream=stream, connection_epoch=epoch,
-                                        received_wall=wall, received_monotonic_ns=monotonic_ns,
-                                        payload=payload).to_line())
+            self._append(RawMessage(seq=seq, venue=venue, stream=stream, connection_epoch=epoch,
+                                    received_wall=wall, received_monotonic_ns=monotonic_ns,
+                                    payload=payload).to_line())
             self._message_count += 1
         self._expected = seq + 1
 
     def _write_gap(self, first, last, reason):
-        self._write_line(RawGap(first_seq=first, last_seq=last, reason=reason,
-                                detected_wall=self._wall()).to_line())
+        self._append(RawGap(first_seq=first, last_seq=last, reason=reason,
+                            detected_wall=self._wall()).to_line())
         self._gap_count += 1
         self._dropped[reason] += last - first + 1
 
-    def _write_line(self, line):
-        self._records.write(line)
+    def _append(self, line):
+        self._batch += line
         self._digest.update(line)
         self._bytes += len(line)
 
-    def _fsync(self):
-        self._records.flush()
-        os.fsync(self._records.fileno())
+    def _flush(self):
+        """Hand the whole batch to the operating system, looping over short writes."""
+        while self._batch:
+            written = self._files.write(self._fd, self._batch)
+            del self._batch[:written]
+
+    def _sync(self):
+        self._flush()
+        self._files.fsync(self._fd)
         self._last_fsync = time.monotonic()
+        self._checkpoint = self._snapshot()
+
+    def _snapshot(self):
+        return dict(bytes=self._bytes, expected=self._expected, digest=self._digest.copy(),
+                    message_count=self._message_count, gap_count=self._gap_count,
+                    dropped=dict(self._dropped))
 
     def _finish(self):
         if self._final_assigned >= self._expected:
             self._write_gap(self._expected, self._final_assigned, 'queue_full')
             self._expected = self._final_assigned + 1
-        self._fsync()
-        self._records.close()
-        self._status = 'closed'
+        self._sync()
+        self._files.close(self._fd)
+        self._fd = None
+        # The capture counts as finalized only once the manifest saying so is on disk.
         self._finalized = True
-        self._write_manifest()
+        self._status = 'closed'
+        try:
+            self._write_manifest()
+        except OSError as error:
+            self._fail(error)
+            return
+        self._notify('closed')
+
+    def _set_status(self, status):
+        """Record a status change in the manifest and tell the owner. Never raises."""
+        if status == self._status:
+            return
+        self._status = status
+        try:
+            self._write_manifest()
+        except OSError:
+            pass   # the status still changes in memory; the next manifest write will carry it
+        self._notify(status)
+
+    def _notify(self, status):
+        if self._on_status is not None:
+            try:
+                self._on_status(status)
+            except Exception:
+                pass
 
     def _write_manifest(self):
         missing = sum(self._dropped.values())

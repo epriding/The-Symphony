@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from src.raw_capture.capture import RawCapture
+from src.raw_capture.capture import FileOps, RawCapture
 from src.raw_capture.records import RawMessage
 from src.raw_capture.validator import open_raw_capture, validate_raw_capture
 
@@ -229,13 +229,14 @@ def test_invalid_identity_is_rejected_before_creating_files(tmp_path, overrides)
     assert not (tmp_path / 'raw').exists()
 
 
-def failing_opener(path, mode):
-    raise OSError('disk full')
+class FailingOpen(FileOps):
+    def open(self, path, *, create):
+        raise OSError('disk full')
 
 
 def test_failed_open_leaves_nothing_behind_and_allows_a_retry(tmp_path):
     with pytest.raises(OSError, match='disk full'):
-        make(tmp_path, opener=failing_opener)
+        make(tmp_path, file_ops=FailingOpen())
     assert not (tmp_path / 'raw').exists()
     make(tmp_path).close()
     assert validate_raw_capture(tmp_path).verdict == 'complete'
@@ -257,3 +258,82 @@ def test_failed_start_keeps_files_it_did_not_create(tmp_path):
     with pytest.raises(FileExistsError):
         make(tmp_path)
     assert (tmp_path / 'raw' / 'notes.txt').read_text() == 'keep me'
+
+
+class CountingOps(FileOps):
+    """Real file operations that count fsyncs and split every write in two (short writes)."""
+    def __init__(self):
+        self.fsyncs = 0
+
+    def write(self, fd, data):
+        return super().write(fd, bytes(data[:max(1, len(data) // 2)]))
+
+    def fsync(self, fd):
+        self.fsyncs += 1
+        super().fsync(fd)
+
+
+def test_short_writes_are_completed(tmp_path):
+    capture = make(tmp_path, file_ops=CountingOps())
+    for n in range(50):
+        capture.offer('synthetic', 'test', 0, f'message {n} ' * 20)
+    assert capture.close()
+    assert validate_raw_capture(tmp_path).verdict == 'complete'
+
+
+def test_idle_writer_does_not_fsync(tmp_path):
+    ops = CountingOps()
+    capture = make(tmp_path, file_ops=ops, fsync_interval_seconds=0.01)
+    capture.offer('synthetic', 'test', 0, 'one')
+    eventually(lambda: ops.fsyncs >= 1)
+    time.sleep(0.2)             # many intervals pass with nothing new to write
+    assert ops.fsyncs == 1
+    assert capture.close()
+    assert ops.fsyncs == 2      # close syncs the (empty) remainder once
+
+
+def test_status_hook_reports_close(tmp_path):
+    seen = []
+    capture = make(tmp_path, on_status=seen.append)
+    assert capture.close()
+    assert seen == ['closed']
+
+
+def test_status_hook_errors_are_ignored(tmp_path):
+    def broken(status):
+        raise RuntimeError('hook bug')
+    capture = make(tmp_path, on_status=broken)
+    assert capture.close() and capture.status == 'closed'
+
+
+class BrokenWrite(FileOps):
+    def write(self, fd, data):
+        raise RuntimeError('bug while writing')
+
+
+def test_unexpected_error_fails_the_capture(tmp_path):
+    seen = []
+    capture = make(tmp_path, file_ops=BrokenWrite(), on_status=seen.append)
+    capture.offer('synthetic', 'test', 0, 'one')
+    eventually(lambda: seen == ['failed'])   # the hook runs after the status and manifest change
+    assert capture.status == 'failed' and isinstance(capture.writer_error, RuntimeError)
+    capture.offer('synthetic', 'test', 0, 'two')    # still never raises
+    assert not capture.close(timeout=1.0)
+    report = validate_raw_capture(tmp_path)
+    assert report.verdict == 'incomplete' and report.status == 'failed', report.errors
+
+
+def test_final_manifest_failure_means_not_finalized(tmp_path, monkeypatch):
+    capture = make(tmp_path)
+    capture.offer('synthetic', 'test', 0, 'one')
+    original = RawCapture._write_manifest
+
+    def fail_when_finalizing(self):
+        if self._finalized:
+            raise OSError('no space for manifest')
+        original(self)
+    monkeypatch.setattr(RawCapture, '_write_manifest', fail_when_finalizing)
+    assert not capture.close()
+    assert capture.status == 'failed' and isinstance(capture.writer_error, OSError)
+    report = validate_raw_capture(tmp_path)
+    assert report.verdict == 'incomplete' and report.status == 'failed', report.errors
