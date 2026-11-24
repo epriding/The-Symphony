@@ -219,3 +219,41 @@ def open_raw_capture_incomplete(tmp_path):
     from src.raw_capture.records import parse_line
     lines = (tmp_path / 'raw' / 'records.jsonl').read_bytes().splitlines(keepends=True)
     return [record for record in map(parse_line, lines) if isinstance(record, RawMessage)]
+
+
+@pytest.mark.parametrize('overrides', [dict(session_id=None), dict(session_id=''), dict(session_id=7),
+                                       dict(code_revision=None)])
+def test_invalid_identity_is_rejected_before_creating_files(tmp_path, overrides):
+    with pytest.raises(ValueError):
+        make(tmp_path, **overrides)
+    assert not (tmp_path / 'raw').exists()
+
+
+def failing_opener(path, mode):
+    raise OSError('disk full')
+
+
+def test_failed_open_leaves_nothing_behind_and_allows_a_retry(tmp_path):
+    with pytest.raises(OSError, match='disk full'):
+        make(tmp_path, opener=failing_opener)
+    assert not (tmp_path / 'raw').exists()
+    make(tmp_path).close()
+    assert validate_raw_capture(tmp_path).verdict == 'complete'
+
+
+def test_failed_first_manifest_leaves_nothing_behind(tmp_path, monkeypatch):
+    def fail(self):
+        (self.directory / 'manifest.tmp').write_text('{')   # as if the write died part-way
+        raise OSError('no space for manifest')
+    monkeypatch.setattr(RawCapture, '_write_manifest', fail)
+    with pytest.raises(OSError, match='no space'):
+        make(tmp_path)
+    assert not (tmp_path / 'raw').exists()
+
+
+def test_failed_start_keeps_files_it_did_not_create(tmp_path):
+    (tmp_path / 'raw').mkdir()
+    (tmp_path / 'raw' / 'notes.txt').write_text('keep me')
+    with pytest.raises(FileExistsError):
+        make(tmp_path)
+    assert (tmp_path / 'raw' / 'notes.txt').read_text() == 'keep me'

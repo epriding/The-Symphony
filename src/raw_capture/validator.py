@@ -161,8 +161,9 @@ def _scan(path, report, line_limit, finalized):
 
 
 def _raw_directory(directory):
+    """Accept a session output directory (containing raw/) or the raw/ directory itself."""
     directory = Path(directory)
-    return directory / 'raw' if (directory / 'raw' / 'manifest.json').exists() else directory
+    return directory / 'raw' if (directory / 'raw').is_dir() else directory
 
 
 def validate_raw_capture(directory):

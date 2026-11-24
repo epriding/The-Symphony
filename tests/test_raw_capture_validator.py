@@ -197,3 +197,11 @@ def test_report_serializes_to_json(tmp_path):
     assert set(fields) == {'format_version', 'status', 'finalized', 'complete', 'message_count', 'first_seq',
                            'last_seq', 'last_assigned_seq', 'missing_ranges', 'dropped', 'checksum',
                            'truncated_tail', 'errors'}
+
+
+def test_raw_directory_without_a_manifest_says_so(tmp_path):
+    (tmp_path / 'manifest.json').write_text('{"schema_version": 3}')   # a paper-trading capture
+    (tmp_path / 'raw').mkdir()
+    report = validate_raw_capture(tmp_path)
+    assert report.verdict == 'invalid'
+    assert 'raw/manifest.json' in report.errors[0]

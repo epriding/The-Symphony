@@ -45,6 +45,11 @@ class RawCapture:
                 raise ValueError(f'{name} must be a positive finite number')
         if queue_bytes < max_payload_bytes:
             raise ValueError('queue_bytes must be at least max_payload_bytes')
+        # The validator requires both to be strings; check now rather than write an unreadable manifest.
+        if type(session_id) is not str or not session_id:
+            raise ValueError('session_id must be a non-empty string')
+        if type(code_revision) is not str:
+            raise ValueError('code_revision must be a string')
         self.directory = Path(directory) / 'raw'
         self.config = dict(queue_capacity=queue_capacity, queue_bytes=queue_bytes,
                            max_payload_bytes=max_payload_bytes,
@@ -80,15 +85,38 @@ class RawCapture:
         self.writer_error = None
 
         self.directory.mkdir(parents=True, exist_ok=False)
-        self._records = opener(self.directory / 'records.jsonl', 'xb')
+        self._records = None
         try:
+            self._records = opener(self.directory / 'records.jsonl', 'xb')
             self._write_manifest()
+            self._stop = threading.Event()
+            self._thread = threading.Thread(target=self._run, name='raw-capture-writer', daemon=True)
+            self._thread.start()
         except BaseException:
-            self._records.close()
+            self._remove_partial_start()
             raise
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, name='raw-capture-writer', daemon=True)
-        self._thread.start()
+
+    def _remove_partial_start(self):
+        """Undo a failed start so the same output directory can be used again.
+
+        Only removes the files this constructor creates, then the folder if it is empty.
+        """
+        if self._records is not None:
+            try:
+                self._records.close()
+            except OSError:
+                pass
+        for name in ('records.jsonl', 'manifest.tmp', 'manifest.json'):
+            try:
+                (self.directory / name).unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                return
+        try:
+            self.directory.rmdir()
+        except OSError:
+            pass
 
     # ---- caller thread -------------------------------------------------
 
