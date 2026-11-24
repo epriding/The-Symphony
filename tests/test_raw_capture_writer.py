@@ -337,3 +337,178 @@ def test_final_manifest_failure_means_not_finalized(tmp_path, monkeypatch):
     assert capture.status == 'failed' and isinstance(capture.writer_error, OSError)
     report = validate_raw_capture(tmp_path)
     assert report.verdict == 'incomplete' and report.status == 'failed', report.errors
+
+
+# ---- disk errors and recovery ------------------------------------------------
+
+class FaultyOps(FileOps):
+    """Real file operations with switches the test flips to make the next calls fail."""
+    def __init__(self):
+        self.fail_write = self.fail_fsync = self.fail_open = False
+        self.fail_fsync_times = 0
+        self.opens = 0
+
+    def open(self, path, *, create):
+        self.opens += 1
+        if self.fail_open and not create:
+            raise OSError('cannot reopen')
+        return super().open(path, create=create)
+
+    def write(self, fd, data):
+        if self.fail_write:
+            raise OSError('write failed')
+        return super().write(fd, data)
+
+    def fsync(self, fd):
+        if self.fail_fsync or self.fail_fsync_times:
+            self.fail_fsync_times = max(0, self.fail_fsync_times - 1)
+            raise OSError('fsync failed')
+        super().fsync(fd)
+
+
+def faulty(tmp_path, **overrides):
+    ops, seen = FaultyOps(), []
+    options = dict(file_ops=ops, on_status=seen.append, retry_interval_seconds=0.02,
+                   fsync_interval_seconds=0.01)
+    options.update(overrides)
+    return make(tmp_path, **options), ops, seen
+
+
+def messages(tmp_path):
+    from src.raw_capture.records import parse_line
+    lines = (tmp_path / 'raw' / 'records.jsonl').read_bytes().splitlines(keepends=True)
+    return [record for record in map(parse_line, lines) if isinstance(record, RawMessage)]
+
+
+def test_write_error_degrades_then_recovers(tmp_path):
+    capture, ops, seen = faulty(tmp_path)
+    ops.fail_write = True
+    for n in range(1, 4):
+        capture.offer('synthetic', 'test', 0, f'lost {n}')
+    eventually(lambda: capture.status == 'degraded')
+    capture.offer('synthetic', 'test', 0, 'lost 4')    # discarded while degraded; offer still returns
+    capture.offer('synthetic', 'test', 0, 'lost 5')
+    eventually(capture._queue.empty)
+    ops.fail_write = False
+    eventually(lambda: capture.status == 'writing')
+    capture.offer('synthetic', 'test', 0, 'kept 6')
+    assert capture.close()
+    report = validate_raw_capture(tmp_path)
+    assert report.verdict == 'incomplete' and report.finalized, report.errors
+    assert report.missing_ranges == [dict(first_seq=1, last_seq=5, reason='writer_error')]
+    assert [m.payload for m in messages(tmp_path)] == ['kept 6']
+    assert seen == ['degraded', 'writing', 'closed']
+
+
+def test_fsync_error_discards_only_data_after_the_checkpoint(tmp_path):
+    capture, ops, seen = faulty(tmp_path)
+    capture.offer('synthetic', 'test', 0, 'durable 1')
+    capture.offer('synthetic', 'test', 0, 'durable 2')
+    eventually(lambda: capture._checkpoint['expected'] == 3)    # both are fsynced
+    ops.fail_fsync = True
+    capture.offer('synthetic', 'test', 0, 'written but never synced 3')
+    eventually(lambda: capture.status == 'degraded')
+    ops.fail_fsync = False
+    eventually(lambda: capture.status == 'writing')
+    capture.offer('synthetic', 'test', 0, 'after 4')
+    assert capture.close()
+    report = validate_raw_capture(tmp_path)
+    assert report.missing_ranges == [dict(first_seq=3, last_seq=3, reason='writer_error')], report.errors
+    assert [m.payload for m in messages(tmp_path)] == ['durable 1', 'durable 2', 'after 4']
+    assert b'never synced' not in (tmp_path / 'raw' / 'records.jsonl').read_bytes()
+
+
+def test_recovery_retries_until_it_succeeds(tmp_path):
+    capture, ops, seen = faulty(tmp_path)
+    ops.fail_write = ops.fail_open = True
+    capture.offer('synthetic', 'test', 0, 'lost')
+    eventually(lambda: capture.status == 'degraded')
+    ops.fail_write = False
+    opens = ops.opens
+    eventually(lambda: ops.opens >= opens + 3)     # several failed reopen attempts
+    assert capture.status == 'degraded'
+    ops.fail_open = False
+    eventually(lambda: capture.status == 'writing')
+    capture.offer('synthetic', 'test', 0, 'kept')
+    assert capture.close()
+    assert [m.payload for m in messages(tmp_path)] == ['kept']
+    assert validate_raw_capture(tmp_path).dropped['writer_error'] == 1
+
+
+def test_drops_during_an_outage_join_the_writer_error_range(tmp_path):
+    gate = paused()
+    gate.set()
+    capture, ops, seen = faulty(tmp_path, _gate=gate, queue_capacity=2)
+    ops.fail_write = True
+    capture.offer('synthetic', 'test', 0, 'one')
+    eventually(lambda: capture.status == 'degraded')
+    eventually(capture._queue.empty)
+    gate.clear()
+    capture.offer('synthetic', 'test', 0, 'a')    # queued
+    capture.offer('synthetic', 'test', 0, 'b')    # queued
+    capture.offer('synthetic', 'test', 0, 'c')    # dropped: queue full
+    gate.set()
+    eventually(capture._queue.empty)
+    capture.offer('synthetic', 'test', 0, 'd')    # queued, discarded: covers c too
+    eventually(capture._queue.empty)
+    ops.fail_write = False
+    eventually(lambda: capture.status == 'writing')
+    assert capture.close()
+    report = validate_raw_capture(tmp_path)
+    assert report.missing_ranges == [dict(first_seq=1, last_seq=5, reason='writer_error')], report.errors
+    assert capture.dropped_queue_full == 1 and report.dropped['queue_full'] == 0
+
+
+def test_error_that_lasts_through_close_fails_the_capture(tmp_path):
+    capture, ops, seen = faulty(tmp_path)
+    ops.fail_write = True
+    capture.offer('synthetic', 'test', 0, 'lost')
+    eventually(lambda: capture.status == 'degraded')
+    assert not capture.close(timeout=2.0)
+    assert capture.status == 'failed' and isinstance(capture.writer_error, OSError)
+    assert seen == ['degraded', 'failed']
+    report = validate_raw_capture(tmp_path)
+    assert report.verdict == 'incomplete' and report.status == 'failed', report.errors
+
+
+def test_error_during_the_final_sync_gets_one_recovery_attempt(tmp_path):
+    gate = paused()
+    capture, ops, seen = faulty(tmp_path, _gate=gate, fsync_interval_seconds=60)
+    for n in range(3):
+        capture.offer('synthetic', 'test', 0, str(n))
+    ops.fail_fsync_times = 1       # the first fsync (at close) fails, the retry succeeds
+    gate.set()
+    assert capture.close()
+    report = validate_raw_capture(tmp_path)
+    assert report.finalized and report.verdict == 'incomplete', report.errors
+    assert report.missing_ranges == [dict(first_seq=1, last_seq=3, reason='writer_error')]
+    assert seen == ['degraded', 'writing', 'closed']
+
+
+def test_file_shorter_than_its_checkpoint_fails_the_capture(tmp_path):
+    capture, ops, seen = faulty(tmp_path)
+    capture.offer('synthetic', 'test', 0, 'durable')
+    eventually(lambda: capture._checkpoint['expected'] == 2)
+    ops.fail_write = ops.fail_open = True
+    capture.offer('synthetic', 'test', 0, 'lost')
+    eventually(lambda: capture.status == 'degraded')
+    (tmp_path / 'raw' / 'records.jsonl').write_bytes(b'')   # durable data vanished
+    ops.fail_write = ops.fail_open = False
+    eventually(lambda: capture.status == 'failed')
+    assert isinstance(capture.writer_error, RuntimeError)
+    assert not capture.close(timeout=1.0)
+
+
+def test_offer_never_blocks_or_raises_while_degraded(tmp_path):
+    capture, ops, seen = faulty(tmp_path, queue_capacity=3)
+    ops.fail_write = True
+    capture.offer('synthetic', 'test', 0, 'x')
+    eventually(lambda: capture.status == 'degraded')
+    started = time.monotonic()
+    for _ in range(10_000):
+        capture.offer('synthetic', 'test', 0, 'x')
+    assert time.monotonic() - started < 2.0
+    ops.fail_write = False
+    eventually(lambda: capture.status == 'writing')
+    assert capture.close()
+    assert validate_raw_capture(tmp_path).finalized

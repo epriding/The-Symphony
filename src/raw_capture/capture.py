@@ -16,6 +16,16 @@ The writer opens `records.jsonl` without Python's file buffer and batches
 lines itself, so it always knows exactly which bytes it has handed to the
 operating system. After each successful fsync it keeps a checkpoint: the
 file size, the sequence covered, the digest and the counters at that point.
+
+When a write, flush or fsync fails, nothing after the checkpoint can be
+trusted (on Linux a failed fsync may already have dropped the data). The
+writer rolls its state back to the checkpoint and becomes `degraded`. It
+keeps draining the queue, discarding frames, so the tap never fills up
+because of a broken disk. Every `retry_interval_seconds` it reopens the
+file, truncates it to the checkpoint, writes one `writer_error` gap covering
+everything from the checkpoint to the last frame it discarded, and fsyncs.
+If that works it goes back to `writing`. It retries until shutdown, where it
+makes a final attempt; if that fails too, the capture ends `failed`.
 """
 from hashlib import sha256
 from pathlib import Path
@@ -119,6 +129,9 @@ class RawCapture:
         self._final_assigned = None
         self._last_fsync = time.monotonic()
         self._checkpoint = self._snapshot()
+        self._lost_from = None           # while degraded: first and last seq to cover with a writer_error gap
+        self._lost_to = None
+        self._next_retry = 0.0
         self.writer_error = None
 
         self.directory.mkdir(parents=True, exist_ok=False)
@@ -219,12 +232,22 @@ class RawCapture:
                     item = self._queue.get(timeout=POLL_SECONDS)
                 except queue.Empty:
                     item = None
-                if item is not None:
-                    self._write_item(item)
-                if item is None or len(self._batch) >= BATCH_BYTES:
-                    self._flush()
-                if self._bytes != self._checkpoint['bytes'] and time.monotonic() - self._last_fsync >= interval:
-                    self._sync()
+                if self._status == 'degraded':
+                    if item is not None:
+                        self._discard(item)
+                    if time.monotonic() >= self._next_retry:
+                        self._recover()
+                else:
+                    try:
+                        if item is not None:
+                            self._write_item(item)
+                        if item is None or len(self._batch) >= BATCH_BYTES:
+                            self._flush()
+                        if (self._bytes != self._checkpoint['bytes']
+                                and time.monotonic() - self._last_fsync >= interval):
+                            self._sync()
+                    except OSError as error:
+                        self._degrade(error)
                 if item is None and self._stop.is_set() and self._queue.empty():
                     break
             self._finish()
@@ -286,12 +309,87 @@ class RawCapture:
                     message_count=self._message_count, gap_count=self._gap_count,
                     dropped=dict(self._dropped))
 
+    # ---- disk-error recovery (writer thread) ----------------------------
+
+    def _discard(self, item):
+        with self._lock:
+            self._queued_bytes -= item[-1]
+        self._lost_to = item[0]   # decision 4a: earlier drops of any kind fall inside the writer_error range
+
+    def _degrade(self, error):
+        """Roll back to the last checkpoint and start discarding until recovery works."""
+        self.writer_error = error
+        self._lost_from = self._checkpoint['expected']
+        self._lost_to = self._expected - 1
+        self._restore_checkpoint()
+        self._next_retry = time.monotonic() + self.config['retry_interval_seconds']
+        self._set_status('degraded')
+
+    def _restore_checkpoint(self):
+        checkpoint = self._checkpoint
+        self._bytes = checkpoint['bytes']
+        self._expected = checkpoint['expected']
+        self._digest = checkpoint['digest'].copy()
+        self._message_count = checkpoint['message_count']
+        self._gap_count = checkpoint['gap_count']
+        self._dropped = dict(checkpoint['dropped'])
+        self._batch.clear()
+
+    def _recover(self):
+        """Reopen, truncate to the checkpoint, write the writer_error gap and fsync. True on success.
+
+        A file shorter than its checkpoint means data already confirmed durable has
+        gone; that is not a disk hiccup to retry, so it raises and fails the capture.
+        """
+        try:
+            if self._fd is not None:
+                try:
+                    self._files.close(self._fd)
+                except OSError:
+                    pass
+                self._fd = None
+            self._fd = self._files.open(self.directory / 'records.jsonl', create=False)
+            if self._files.size(self._fd) < self._checkpoint['bytes']:
+                raise RuntimeError('records.jsonl is shorter than its last durable checkpoint')
+            self._files.truncate(self._fd, self._checkpoint['bytes'])
+            if self._lost_to >= self._lost_from:
+                self._write_gap(self._lost_from, self._lost_to, 'writer_error')
+                self._expected = self._lost_to + 1
+            self._sync()
+        except OSError as error:
+            self.writer_error = error
+            self._restore_checkpoint()
+            self._next_retry = time.monotonic() + self.config['retry_interval_seconds']
+            return False
+        self._lost_from = self._lost_to = None
+        self._set_status('writing')
+        return True
+
     def _finish(self):
-        if self._final_assigned >= self._expected:
-            self._write_gap(self._expected, self._final_assigned, 'queue_full')
-            self._expected = self._final_assigned + 1
-        self._sync()
-        self._files.close(self._fd)
+        """Drain is done: write the trailing gap, fsync and finalize.
+
+        Each disk error here gets one immediate recovery attempt, at most two in
+        total, so shutdown stays bounded. If they fail, the capture ends failed.
+        """
+        for _ in range(2):
+            if self._status == 'degraded' and not self._recover():
+                break
+            try:
+                if self._final_assigned >= self._expected:
+                    self._write_gap(self._expected, self._final_assigned, 'queue_full')
+                    self._expected = self._final_assigned + 1
+                self._sync()
+            except OSError as error:
+                self._degrade(error)
+                continue
+            break
+        if self._status == 'degraded':
+            self._fail(self.writer_error)
+            return
+        try:
+            self._files.close(self._fd)
+        except OSError:
+            pass   # the fsync above already confirmed the data is on disk
         self._fd = None
         # The capture counts as finalized only once the manifest saying so is on disk.
         self._finalized = True
