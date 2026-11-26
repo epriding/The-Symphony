@@ -209,6 +209,52 @@ def test_oversize_frame_becomes_a_gap_without_content(tmp_path):
     assert b'secret' not in (tmp_path / 'raw' / 'records.jsonl').read_bytes()
 
 
+def test_frame_refused_by_the_connection_becomes_an_oversize_gap(tmp_path):
+    capture = make(tmp_path)
+    capture.offer('kalshi', 'public_ws', 1, 'before')
+    capture.mark_oversize('kalshi', 'public_ws', 1)
+    capture.offer('kalshi', 'public_ws', 2, 'after')
+    assert capture.close()
+    report = validate_raw_capture(tmp_path)
+    assert report.verdict == 'incomplete', report.errors
+    assert report.missing_ranges == [dict(first_seq=2, last_seq=2, reason='oversize')]
+    assert line_kinds(tmp_path) == [1, 'gap', 3]
+
+
+def test_mark_oversize_rejects_programming_errors_and_is_ignored_after_close(tmp_path):
+    capture = make(tmp_path)
+    with pytest.raises(ValueError):
+        capture.mark_oversize('nasdaq', 'public_ws', 1)
+    assert capture.close()
+    capture.mark_oversize('kalshi', 'public_ws', 1)
+    assert capture.last_assigned_seq == 0
+
+
+def test_summary_of_a_clean_capture(tmp_path):
+    capture = make(tmp_path)
+    for n in range(3):
+        capture.offer('synthetic', 'test', 0, str(n))
+    assert capture.close()
+    assert capture.summary() == dict(status='closed', finalized=True, complete=True, last_assigned_seq=3,
+                                     message_count=3, missing_count=0,
+                                     dropped={'oversize': 0, 'queue_full': 0, 'writer_error': 0}, error=None)
+
+
+def test_summary_counts_gaps_like_the_validator(tmp_path):
+    gate = paused()
+    capture = make(tmp_path, gate=gate, queue_capacity=2, max_payload_bytes=4)
+    capture.offer('synthetic', 'test', 0, 'too long')
+    for n in range(4):
+        capture.offer('synthetic', 'test', 0, str(n))
+    gate.set()
+    assert capture.close()
+    summary, report = capture.summary(), validate_raw_capture(tmp_path)
+    # The oversize marker and '0' fill the two slots; '1', '2' and '3' are dropped.
+    assert (summary['complete'], summary['missing_count']) == (False, 4)
+    assert summary['dropped'] == report.dropped == {'oversize': 1, 'queue_full': 3, 'writer_error': 0}
+    assert summary['message_count'] == report.message_count == 1
+
+
 def test_queue_bytes_must_hold_one_maximum_frame(tmp_path):
     with pytest.raises(ValueError, match='queue_bytes'):
         make(tmp_path, queue_bytes=100, max_payload_bytes=101)
@@ -469,6 +515,17 @@ def test_error_that_lasts_through_close_fails_the_capture(tmp_path):
     assert seen == ['degraded', 'failed']
     report = validate_raw_capture(tmp_path)
     assert report.verdict == 'incomplete' and report.status == 'failed', report.errors
+
+
+def test_summary_of_a_failed_capture_names_the_error(tmp_path):
+    capture, ops, seen = faulty(tmp_path)
+    ops.fail_write = True
+    capture.offer('synthetic', 'test', 0, 'lost')
+    eventually(lambda: capture.status == 'degraded')
+    assert not capture.close(timeout=2.0)
+    summary = capture.summary()
+    assert (summary['status'], summary['finalized'], summary['complete']) == ('failed', False, False)
+    assert summary['missing_count'] == 1 and summary['error'] == 'OSError: write failed'
 
 
 def test_error_during_the_final_sync_gets_one_recovery_attempt(tmp_path):

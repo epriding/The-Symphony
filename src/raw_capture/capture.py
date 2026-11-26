@@ -74,6 +74,13 @@ def _positive_integer(value, name):
         raise ValueError(f'{name} must be a positive integer')
 
 
+def _check_source(venue, stream, connection_epoch):
+    if venue not in VENUES or type(stream) is not str or not 0 < len(stream) <= MAX_STREAM_CHARS:
+        raise ValueError('offer needs a known venue and a 1-64 character stream name')
+    if type(connection_epoch) is not int or connection_epoch < 0:
+        raise ValueError('connection_epoch must be a non-negative integer')
+
+
 class RawCapture:
     def __init__(self, directory, *, session_id, queue_capacity, queue_bytes, max_payload_bytes,
                  fsync_interval_seconds, retry_interval_seconds=1.0, code_revision='unknown',
@@ -172,16 +179,24 @@ class RawCapture:
 
     def offer(self, venue, stream, connection_epoch, payload):
         """Record one inbound frame. Never blocks and never raises because of capture state."""
-        if venue not in VENUES or type(stream) is not str or not 0 < len(stream) <= MAX_STREAM_CHARS:
-            raise ValueError('offer needs a known venue and a 1-64 character stream name')
-        if type(connection_epoch) is not int or connection_epoch < 0:
-            raise ValueError('connection_epoch must be a non-negative integer')
+        _check_source(venue, stream, connection_epoch)
         if type(payload) not in (str, bytes):
             raise ValueError('payload must be str or bytes')
         wall, monotonic_ns = self._wall(), self._monotonic_ns()
         size = len(payload) if type(payload) is bytes else len(payload.encode('utf-8'))
         if size > self.config['max_payload_bytes']:
             payload, size = None, 0  # oversize marker: the writer records a gap, not the content
+        self._enqueue(venue, stream, connection_epoch, wall, monotonic_ns, payload, size)
+
+    def mark_oversize(self, venue, stream, connection_epoch):
+        """Record a frame the connection refused for size before the tap could see it.
+
+        It takes one sequence number, which the writer records as an oversize gap.
+        """
+        _check_source(venue, stream, connection_epoch)
+        self._enqueue(venue, stream, connection_epoch, self._wall(), self._monotonic_ns(), None, 0)
+
+    def _enqueue(self, venue, stream, connection_epoch, wall, monotonic_ns, payload, size):
         with self._lock:
             if self._closed:
                 return
@@ -205,6 +220,21 @@ class RawCapture:
     @property
     def status(self):
         return self._status
+
+    def summary(self):
+        """The capture's state for a run's outcome. Call after close().
+
+        If close() timed out the writer may still be running, and this is a snapshot.
+        missing_count is every assigned sequence number not recorded as a message.
+        """
+        last_assigned = self.last_assigned_seq
+        finalized = self._finalized
+        missing = last_assigned - self._message_count
+        error = self.writer_error
+        return dict(status=self._status, finalized=finalized, complete=finalized and missing == 0,
+                    last_assigned_seq=last_assigned, message_count=self._message_count,
+                    missing_count=missing, dropped=dict(self._dropped),
+                    error=None if error is None else f'{type(error).__name__}: {error}')
 
     def close(self, ended_wall=None, timeout=5.0):
         """Stop accepting frames, let the writer drain and finalize, and wait up to `timeout`.
