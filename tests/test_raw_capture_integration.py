@@ -208,3 +208,123 @@ async def test_polymarket_other_disconnects_are_not_marked():
     client, _ = us_websocket([], error=error, raw=tap)
     await client._message_loop()
     assert tap.calls == []
+
+
+# ---- The runtime: create, connect, close and report ----
+
+import json
+
+from src.bot import BotRunner
+from src.paper_trading.clock import VirtualClock
+from src.raw_capture import capture as capture_module
+from src.raw_capture.validator import open_raw_capture, validate_raw_capture
+
+from bot_v1_support import START, VENUES, ControlledFeed, eventually, strategy_config, valid_config
+
+
+class Idle:
+    async def on_snapshot(self, snapshot):
+        return None
+
+
+class TappedFeed(ControlledFeed):
+    """A fixture feed that hands each pushed book to raw capture, as a real adapter would."""
+    async def push_book(self, **kwargs):
+        raw = getattr(self, 'raw_capture', None)
+        if raw is not None:
+            raw.offer('synthetic', self.exchange.lower(), 1, json.dumps({'book': self.emitted}))
+        await super().push_book(**kwargs)
+
+
+def raw_section(**overrides):
+    value = dict(enabled=True, queue_capacity=100, queue_bytes=262144, fsync_interval_seconds=0.05)
+    value.update(overrides)
+    return value
+
+
+async def run_session(directory, raw=None, *, books=3):
+    config = valid_config(strategies=[strategy_config('idle', factory='idle')])
+    if raw is not None:
+        config['raw_capture'] = raw
+    clock = VirtualClock(START)
+    feeds = [TappedFeed(venue, clock=clock) for venue in VENUES]
+    runner = BotRunner(config, output_directory=directory, feeds=feeds, clock=clock,
+                       strategy_factories={'idle': lambda context: Idle()})
+    task = asyncio.create_task(runner.run())
+    await eventually(lambda: task.done() or all(feed.started.is_set() for feed in feeds), task=task)
+    for _ in range(books):
+        clock.advance(clock() + .05)
+        for feed in feeds:
+            await feed.push_book()
+    for feed in feeds:
+        await feed.end()
+    summary = await asyncio.wait_for(task, 5)
+    return summary, feeds, json.loads((directory / 'outcome.json').read_text())
+
+
+@pytest.mark.asyncio
+async def test_run_with_raw_capture_produces_a_complete_capture(tmp_path):
+    summary, feeds, outcome = await run_session(tmp_path / 'out', raw_section())
+    report = validate_raw_capture(tmp_path / 'out')
+    assert report.verdict == 'complete', report.errors
+    records = list(open_raw_capture(tmp_path / 'out'))
+    assert len(records) == 6 and {r.stream for r in records} == {'polymarket_us', 'kalshi'}
+    assert outcome['clean'] and outcome['raw_capture'] == dict(
+        status='closed', finalized=True, complete=True, last_assigned_seq=6, message_count=6,
+        missing_count=0, dropped={'oversize': 0, 'queue_full': 0, 'writer_error': 0}, error=None)
+    assert summary['runtime']['raw_capture'] == outcome['raw_capture']
+    paper = json.loads((tmp_path / 'out' / 'manifest.json').read_text())
+    raw = json.loads((tmp_path / 'out' / 'raw' / 'manifest.json').read_text())
+    assert paper['schema_version'] == 5
+    assert raw['session_id'] == summary['session_id'] and raw['code_revision'] == paper['code_revision']
+    assert raw['config']['max_payload_bytes'] == 262144 and raw['config']['fsync_interval_seconds'] == 0.05
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('raw', [None, raw_section(enabled=False)])
+async def test_run_without_raw_capture_is_unchanged(tmp_path, raw):
+    _, feeds, outcome = await run_session(tmp_path / 'out', raw)
+    assert not (tmp_path / 'out' / 'raw').exists()
+    assert 'raw_capture' not in outcome
+    assert all(not hasattr(feed, 'raw_capture') for feed in feeds)
+
+
+@pytest.mark.asyncio
+async def test_disk_failure_leaves_the_run_clean_and_is_reported(tmp_path, monkeypatch):
+    def broken_write(self, fd, data):
+        raise OSError('disk full')
+    monkeypatch.setattr(capture_module.FileOps, 'write', broken_write)
+    summary, _, outcome = await run_session(tmp_path / 'out', raw_section())
+    assert outcome['clean'] and outcome['status']['phase'] == 'stopped'
+    raw = outcome['raw_capture']
+    assert (raw['status'], raw['finalized'], raw['complete']) == ('failed', False, False)
+    assert raw['missing_count'] == 6 and raw['error'] == 'OSError: disk full'
+    log = (tmp_path / 'out' / 'runtime.log').read_text()
+    assert 'raw capture degraded, discarding frames until the disk recovers: OSError: disk full' in log
+    assert 'raw capture failed and is incomplete' in log
+    assert validate_raw_capture(tmp_path / 'out').verdict == 'incomplete'
+
+
+@pytest.mark.asyncio
+async def test_raw_capture_that_cannot_start_stops_the_run_before_trading(tmp_path, monkeypatch):
+    def refuse(self, *args, **kwargs):
+        raise OSError('cannot create raw/')
+    monkeypatch.setattr(capture_module.RawCapture, '__init__', refuse)
+    config = valid_config(strategies=[strategy_config('idle', factory='idle')])
+    config['raw_capture'] = raw_section()
+    feeds = [TappedFeed(venue) for venue in VENUES]
+    runner = BotRunner(config, output_directory=tmp_path / 'out', feeds=feeds,
+                       strategy_factories={'idle': lambda context: Idle()})
+    with pytest.raises(OSError, match='cannot create raw/'):
+        await asyncio.wait_for(runner.run(), 5)
+    assert not any(feed.started.is_set() for feed in feeds)
+    assert json.loads((tmp_path / 'out' / 'outcome.json').read_text())['clean'] is False
+
+
+def test_cli_warns_only_when_the_raw_capture_is_incomplete():
+    from main import raw_capture_warning
+    assert raw_capture_warning({'runtime': {}}) is None
+    assert raw_capture_warning({'runtime': {'raw_capture': {'complete': True}}}) is None
+    assert raw_capture_warning({'runtime': {'raw_capture': dict(complete=False, status='degraded',
+                                                                missing_count=650)}}) == (
+        'Warning: raw capture incomplete (status degraded, 650 frames missing); see outcome.json')

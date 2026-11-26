@@ -52,6 +52,15 @@ async def _serve(args: argparse.Namespace, *, force_exit_on_unclean: bool = Fals
                 loop.remove_signal_handler(sig)
 
 
+def raw_capture_warning(summary):
+    """One line for stderr when a run's raw capture is not complete, else None."""
+    raw = summary.get('runtime', {}).get('raw_capture')
+    if raw is None or raw['complete']:
+        return None
+    return (f"Warning: raw capture incomplete (status {raw['status']}, {raw['missing_count']} frames missing); "
+            'see outcome.json')
+
+
 async def _execute(args):
     if args.command == 'replay':
         return await replay_bot(args.capture, args.output)
@@ -134,6 +143,9 @@ def main(argv=None):
             return 0
         summary = asyncio.run(_execute(args))
         print(json.dumps({key: summary[key] for key in ('session_id', 'submitted', 'accounts', 'assumptions')}, indent=2))
+        warning = raw_capture_warning(summary)
+        if warning:
+            print(warning, file=sys.stderr)
         return 0
     except ValueError as error:
         print(redact(f'Invalid configuration: {error}'), file=sys.stderr)

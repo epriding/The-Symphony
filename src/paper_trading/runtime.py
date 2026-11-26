@@ -139,6 +139,7 @@ class BotRunner:
         self._wake = asyncio.Event()
         self._session = None
         self._store = None
+        self._raw_capture = None
         self._tasks = []
         self._zombies = {}
         self._producer_error = None
@@ -628,6 +629,32 @@ class BotRunner:
                 raise RuntimeError('shutdown grace expired with unresolved orders or undelivered reports')
         self._control('drain', unresolved=bool(self._unresolved()), finite_boundary=self.runtime['source'] == 'synthetic')
 
+    def _start_raw_capture(self, config):
+        """Create <output>/raw/ before any frame streams. Failure stops the run before trading."""
+        settings = self.config.get('raw_capture')
+        if not settings or not settings['enabled']:
+            return
+        from ..raw_capture.capture import RawCapture
+        self._raw_capture = RawCapture(self.output_directory,
+            session_id=config.paper_execution.session_id,
+            code_revision=self._session.recorder.manifest['code_revision'],
+            queue_capacity=settings['queue_capacity'], queue_bytes=settings['queue_bytes'],
+            max_payload_bytes=self.limits['max_event_bytes'],
+            fsync_interval_seconds=settings['fsync_interval_seconds'],
+            on_status=self._raw_capture_status)
+
+    def _raw_capture_status(self, status):
+        """Called on the raw-capture writer thread; the log handler accepts any thread."""
+        capture = self._raw_capture
+        error = getattr(capture, 'writer_error', None)
+        reason = 'unknown error' if error is None else redact(f'{type(error).__name__}: {error}')
+        if status == 'degraded':
+            self._logger.warning('raw capture degraded, discarding frames until the disk recovers: %s', reason)
+        elif status == 'writing':
+            self._logger.warning('raw capture recovered; the lost frames are recorded as a writer_error gap')
+        elif status == 'failed':
+            self._logger.error('raw capture failed and is incomplete: %s', reason)
+
     async def _close_producers(self):
         error = None
         for task in self._tasks:
@@ -662,6 +689,7 @@ class BotRunner:
         started = time.monotonic()
         error = None
         summary = None
+        raw_outcome = None
         log_handler = None
         self._logger = logging.getLogger('paper-runtime-' + str(id(self)))
         self._logger.setLevel(logging.INFO)
@@ -698,6 +726,7 @@ class BotRunner:
                     raise ValueError('Synthetic runs require explicit offline fixture feeds')
                 self.feeds = await _create_public_feeds(self.config['feeds'], self.limits,
                     timeout=self.runtime['shutdown_grace_seconds'])
+            self._start_raw_capture(config)
             sequencer = ReceiptSequencer()
             # Reserve finite buffers from the byte budget; no producer can enqueue unbounded events.
             queue_limit = min(config.paper_execution.max_pending_events,
@@ -705,6 +734,8 @@ class BotRunner:
             self._queue = asyncio.Queue(maxsize=queue_limit)
             for feed in self.feeds:
                 feed.sequencer = sequencer
+                if self._raw_capture is not None:
+                    feed.raw_capture = self._raw_capture
                 for identifier in feed.markets:
                     market = await asyncio.wait_for(feed.get_market(identifier), self.runtime['startup_timeout_seconds'])
                     if market.exchange != feed.exchange:
@@ -784,6 +815,20 @@ class BotRunner:
                     error = caught
                 else:
                     error.add_note('producer cleanup: ' + redact(caught))
+            # The feeds are stopped, so no frame can arrive after this. A raw-capture
+            # problem is reported in the outcome and never fails the run.
+            if self._raw_capture is not None:
+                try:
+                    await asyncio.to_thread(self._raw_capture.close,
+                                            timeout=self.runtime['shutdown_grace_seconds'])
+                except BaseException as caught:
+                    if error is None:
+                        error = caught
+                    else:
+                        error.add_note('raw capture close: ' + redact(caught))
+                raw_outcome = self._raw_capture.summary()
+                if raw_outcome['error'] is not None:
+                    raw_outcome['error'] = redact(raw_outcome['error'])
             if self._session is not None:
                 try:
                     self._control('final_reports', failed=error is not None)
@@ -833,6 +878,8 @@ class BotRunner:
                        source=self.runtime['source'], clean=error is None,
                        admitted_memory_highwater_bytes=self._memory_highwater,
                        collector_highwater_bytes=self._event_bytes_highwater)
+        if raw_outcome is not None:
+            outcome['raw_capture'] = raw_outcome
         try:
             if summary is not None:
                 summary['runtime'] = outcome
