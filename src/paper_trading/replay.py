@@ -64,7 +64,7 @@ class _RecordedDecisions:
 
 async def replay(directory, output_directory=None, strategy=None, execution_config=None, strategy_factory=None):
     manifest, records = read_capture(directory)
-    if manifest['schema_version'] in (3, 4):
+    if manifest['schema_version'] in (3, 4, 5):
         if strategy is not None or strategy_factory is not None or execution_config is not None:
             raise ValueError('Schema 3 fresh strategies use the private runtime replay registry')
         if output_directory is None:
@@ -142,6 +142,9 @@ async def _replay_runtime_session(directory, output_directory, *, strategy_facto
         manifest, records = read_capture(directory)
     output = validate_output_directory(output_directory)
     runtime_config = deepcopy(manifest.get('runtime_config'))
+    if runtime_config:
+        # Replay never captures raw frames, so a schema 5 capture replays as schema 3.
+        runtime_config.pop('raw_capture', None)
     limits = (runtime_config['runtime']['limits'] if runtime_config else dict(COMPATIBILITY_LIMITS))
     if strategy_factories is not None and runtime_config is None:
         raise ValueError('Fresh runtime strategy replay requires a schema 3 capture')
