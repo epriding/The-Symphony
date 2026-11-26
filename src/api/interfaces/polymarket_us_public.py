@@ -44,6 +44,8 @@ class PolymarketUSMarketData(MarketDataClient):
         self.read_lock = asyncio.Lock()
         self.last_read = 0.0
         self.epoch = 0
+        # Set by the runtime when raw capture is enabled; handed to each bounded websocket.
+        self.raw_capture = None
         self._close_task = None
 
     async def aclose(self):
@@ -136,7 +138,8 @@ class PolymarketUSMarketData(MarketDataClient):
                 else:
                     from .bounded_public import BoundedMarketsWebSocket
                     websocket = BoundedMarketsWebSocket(key_id=self.key_id, secret_key=self.secret_key,
-                        max_event_bytes=self.max_event_bytes, max_queue=self.queue_limit)
+                        max_event_bytes=self.max_event_bytes, max_queue=self.queue_limit,
+                        raw_capture=self.raw_capture, epoch=self.epoch)
                 critical = []
                 def callback(message):
                     receipt = self.sequencer.receipt()
