@@ -240,3 +240,37 @@ async def test_fingerprint_covers_the_raw_capture_code(tmp_path):
     files = manifest['provenance']['source_fingerprint']['files']
     assert {'src/raw_capture/records.py', 'src/raw_capture/capture.py',
             'src/raw_capture/validator.py'} <= files.keys()
+
+
+# serve sessions and live memory
+
+
+@pytest.mark.parametrize('enabled', [True, False])
+def test_serve_session_refuses_any_section(tmp_path, enabled):
+    with pytest.raises(ValueError, match='serve sessions do not support a raw_capture section'):
+        BotRunner(idle_config(section(enabled=enabled)), output_directory=tmp_path / 'out',
+                  strategy_factories={'idle': lambda context: Idle()}, operator_controls=True)
+    assert not (tmp_path / 'out').exists()
+
+
+def test_serve_service_refuses_the_section_at_launch(tmp_path):
+    from src.operator.service import ControlService
+    with pytest.raises(ValueError, match='serve sessions do not support a raw_capture section'):
+        ControlService(idle_config(section()), output_root=tmp_path / 'sessions')
+
+
+def test_run_session_accepts_the_section(tmp_path):
+    BotRunner(idle_config(section()), output_directory=tmp_path / 'out',
+              strategy_factories={'idle': lambda context: Idle()})
+
+
+def runner_reserved_bytes(tmp_path, config):
+    return BotRunner(config, output_directory=tmp_path, strategy_factories={'idle': lambda context: Idle()})._reserved_bytes
+
+
+def test_enabled_queue_counts_in_the_live_memory_check(tmp_path):
+    plain = runner_reserved_bytes(tmp_path / 'a', idle_config())
+    enabled = runner_reserved_bytes(tmp_path / 'b', idle_config(section()))
+    disabled = runner_reserved_bytes(tmp_path / 'c', idle_config(section(enabled=False)))
+    assert enabled - plain == raw_capture_reserved_bytes(idle_config(section())) > 0
+    assert disabled == plain

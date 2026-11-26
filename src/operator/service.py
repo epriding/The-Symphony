@@ -17,7 +17,7 @@ from .protocol import (
 )
 from .observations import Observations, safe_text, validate_projection
 from ..bot import BotRunner
-from ..paper_trading.runtime_config import validate_bot_config
+from ..paper_trading.runtime_config import reject_raw_capture_for_serve, validate_bot_config
 
 
 def checked_path(path: str | Path) -> Path:
@@ -52,6 +52,7 @@ class ControlService:
             from ..strategies.smoke import smoke_fixture
             config = smoke_fixture()[0]
         self.config = validate_bot_config(config, require_runtime=True)
+        reject_raw_capture_for_serve(self.config)
         validate_projection(self.config)
         self.smoke = smoke
         self._runner_factory = runner_factory or BotRunner

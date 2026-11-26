@@ -93,6 +93,15 @@ def raw_capture_reserved_bytes(config):
     return section['queue_bytes'] + section['queue_capacity'] * RAW_QUEUE_SLOT_BYTES
 
 
+SERVE_RAW_CAPTURE_ERROR = 'serve sessions do not support a raw_capture section; remove it or use run'
+
+
+def reject_raw_capture_for_serve(config):
+    """Schema 4 (operator controls) has no raw_capture variant, so serve refuses the section."""
+    if 'raw_capture' in config:
+        raise ValueError(SERVE_RAW_CAPTURE_ERROR)
+
+
 def _validate_raw_capture(section, limits):
     if not isinstance(section, dict) or set(section) != RAW_CAPTURE_KEYS:
         raise ValueError('raw_capture must contain exactly enabled, queue_capacity, queue_bytes '

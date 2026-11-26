@@ -13,8 +13,9 @@ import time
 from .clock import IdGenerator, RealClock, VirtualClock
 from .recording import encode
 from .runtime_config import (_public_queue_limit, _public_startup_buffer_bytes,
-                             positive, retained_bytes, trading_config,
-                             validate_bot_config, validate_output_directory)
+                             positive, raw_capture_reserved_bytes, reject_raw_capture_for_serve,
+                             retained_bytes, trading_config, validate_bot_config,
+                             validate_output_directory)
 from .scheduler import Scheduler
 from .session import PaperSession
 from ..strategies.context import StrategyContext
@@ -106,6 +107,8 @@ class BotRunner:
                  strategy_factories=None, clock=None, operator_controls=False,
                  operator_observer=None):
         self.config = validate_bot_config(config, require_runtime=True)
+        if operator_controls:
+            reject_raw_capture_for_serve(self.config)
         self.output_directory = validate_output_directory(output_directory)
         self.runtime = self.config['runtime']
         self.limits = self.runtime['limits']
@@ -154,6 +157,7 @@ class BotRunner:
         # Parser/native queues, SQLite pages/cache, logging and finalization headroom.
         self._reserved_bytes = (self.limits['max_event_bytes'] * (16 + len(self.config['feeds']) * 8)
                                 + _public_startup_buffer_bytes(self.config)
+                                + raw_capture_reserved_bytes(self.config)
                                 + self.limits['max_archive_cache_records'] * self.limits['max_event_bytes']
                                 + 1024 * 1024)
         self._status = dict(phase='starting', reason='awaiting startup',
