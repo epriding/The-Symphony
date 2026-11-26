@@ -16,6 +16,11 @@ LIMITS = ('max_strategies', 'max_markets', 'max_active_orders', 'max_positions',
           'max_intents_per_callback', 'max_hot_history_records',
           'max_archive_cache_records', 'max_event_bytes', 'memory_budget_bytes')
 COMPATIBILITY_LIMITS = dict(zip(LIMITS, (8, 8, 64, 32, 8, 16, 8, 262144, 67108864)))
+RAW_CAPTURE_KEYS = frozenset({'enabled', 'queue_capacity', 'queue_bytes', 'fsync_interval_seconds'})
+# A disk error rolls back to the last fsync, so this also caps how much one error can discard.
+MAX_RAW_FSYNC_INTERVAL_SECONDS = 60
+# Per-frame bookkeeping (tuple, timestamps, string header) that queue_bytes does not count.
+RAW_QUEUE_SLOT_BYTES = 512
 
 
 def _public_queue_limit(markets):
@@ -80,6 +85,29 @@ def json_bytes(value):
         raise ValueError('Configuration must contain finite JSON values') from error
 
 
+def raw_capture_reserved_bytes(config):
+    """Memory the raw-capture queue may hold: zero unless the section is enabled."""
+    section = config.get('raw_capture')
+    if not section or not section['enabled']:
+        return 0
+    return section['queue_bytes'] + section['queue_capacity'] * RAW_QUEUE_SLOT_BYTES
+
+
+def _validate_raw_capture(section, limits):
+    if not isinstance(section, dict) or set(section) != RAW_CAPTURE_KEYS:
+        raise ValueError('raw_capture must contain exactly enabled, queue_capacity, queue_bytes '
+                         'and fsync_interval_seconds')
+    if type(section['enabled']) is not bool:
+        raise ValueError('raw_capture.enabled must be a boolean')
+    positive(section['queue_capacity'], 'raw_capture.queue_capacity', integer=True)
+    positive(section['queue_bytes'], 'raw_capture.queue_bytes', integer=True)
+    positive(section['fsync_interval_seconds'], 'raw_capture.fsync_interval_seconds')
+    if section['fsync_interval_seconds'] > MAX_RAW_FSYNC_INTERVAL_SECONDS:
+        raise ValueError(f'raw_capture.fsync_interval_seconds must be at most {MAX_RAW_FSYNC_INTERVAL_SECONDS}')
+    if section['queue_bytes'] < limits['max_event_bytes']:
+        raise ValueError('raw_capture.queue_bytes must be at least max_event_bytes')
+
+
 def positive(value, name, *, integer=False):
     try:
         valid = (not isinstance(value, bool) and isinstance(value, (int, float))
@@ -125,10 +153,12 @@ def validate_bot_config(value, *, require_runtime=False):
     encoded = json_bytes(value)
     raw = deepcopy(value)
     config = trading_config(raw)
+    if 'runtime' not in raw and 'raw_capture' in raw:
+        raise ValueError('raw_capture requires a runtime section')
     if 'runtime' not in raw and not require_runtime:
         return raw
     supported = {'strategy_portfolios', 'starting_balances', 'risk', 'execution',
-                 'feeds', 'market_overrides', 'strategies', 'runtime'}
+                 'feeds', 'market_overrides', 'strategies', 'runtime', 'raw_capture'}
     if set(raw) - supported:
         raise ValueError('Unsupported bot configuration keys; execution is paper-only')
     if not isinstance(raw.get('strategy_portfolios'), dict):
@@ -159,6 +189,8 @@ def validate_bot_config(value, *, require_runtime=False):
         raise ValueError('runtime.limits must contain all specified limits')
     for key in LIMITS:
         positive(limits[key], key, integer=True)
+    if 'raw_capture' in raw:
+        _validate_raw_capture(raw['raw_capture'], limits)
     entries = raw.get('strategies')
     if not isinstance(entries, list) or len(entries) > limits['max_strategies']:
         raise ValueError('strategies must be a bounded list')
@@ -220,7 +252,7 @@ def validate_bot_config(value, *, require_runtime=False):
         raise ValueError('A non-observation run requires an enabled strategy')
     # Include source/recording/context copies and reserve finite admission/cleanup headroom.
     required_bytes = (retained_bytes(raw) * 4 + settings_size * 2 + limits['max_event_bytes'] * 16
-                      + _public_startup_buffer_bytes(raw)
+                      + _public_startup_buffer_bytes(raw) + raw_capture_reserved_bytes(raw)
                       + limits['max_active_orders'] * 4096 + limits['max_positions'] * 4096)
     if required_bytes > limits['memory_budget_bytes']:
         raise ValueError('Configuration and bounded working copies exceed memory_budget_bytes')

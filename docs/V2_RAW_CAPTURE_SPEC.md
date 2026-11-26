@@ -191,9 +191,11 @@ Validation, in `src/paper_trading/runtime_config.py`:
 - When the section is present, it must contain exactly the four keys above:
   - `enabled` is a bool;
   - `queue_capacity` and `queue_bytes` are positive integers;
-  - `fsync_interval_seconds` is a positive finite number.
+  - `fsync_interval_seconds` is a positive finite number of at most 60. A disk error rolls back to the last fsync, so this interval is also the most capture a single disk error can discard.
 - `queue_bytes` must be at least `max_payload_bytes`, so a single maximum-size frame can always be queued.
-- `queue_bytes` is added to the existing `required_bytes` estimate that is checked against `memory_budget_bytes`. A count-only bound would not work: the example configuration allows 256 KiB frames under a 64 MiB budget, so 10,000 of them would need about 2.6 GB.
+- The keys and types are checked even when `enabled` is false, so a mistake shows up before the section is switched on.
+- When `enabled` is true, the queue's memory is `queue_bytes` plus 512 bytes per slot (`queue_capacity × 512`) for per-frame bookkeeping. It is added to the existing `required_bytes` estimate that is checked against `memory_budget_bytes`, and to the runtime's live reserved bytes. A count-only bound would not work: the example configuration allows 256 KiB frames under a 64 MiB budget, so 10,000 of them would need about 2.6 GB.
+- A `raw_capture` section in a config without a `runtime` section is rejected.
 - `raw_capture.enabled = true` requires `runtime.limits.max_event_bytes`. Without it, the Polymarket bounded WebSocket path that exposes raw frames is not used.
 - A `serve` session rejects any `raw_capture` section in this slice, even one with `enabled: false`, so a version 4 capture can never contain it (see Capture schema version).
 
@@ -212,6 +214,7 @@ The recorder copies the full runtime config into the paper-trading `manifest.jso
 - Version 5 means "version 3 plus an optional `raw_capture` config section". Operator-controlled sessions with raw capture would need a combined version, and are out of scope for this slice.
 - `SUPPORTED_SCHEMA_VERSIONS` in `src/paper_trading/recording.py` becomes `{1, 2, 3, 4, 5}`. Every branch in `recording.py` and `replay.py` that currently checks for `(3, 4)` or for 3 treats 5 the same as 3.
 - Replay never performs raw capture. When it rebuilds the session config from a version 5 manifest, it removes the `raw_capture` section before running, so a replay never creates `raw/`.
+- The three `src/raw_capture/*.py` files join `PROVENANCE_PATHS`, so the source fingerprint in every new paper-trading manifest covers the code that handles raw frames.
 - Code from before this change rejects a version 5 capture with its existing "Unsupported or incomplete capture" error. It does not fail later on an unknown config key.
 
 `raw-validate` prints a JSON report and exits with:
