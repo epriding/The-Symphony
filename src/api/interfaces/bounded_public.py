@@ -103,10 +103,12 @@ class BoundedPolymarketPublicAPI:
 
 
 class BoundedMarketsWebSocket(MarketsWebSocket):
-    def __init__(self, *, max_event_bytes, max_queue, **kwargs):
+    def __init__(self, *, max_event_bytes, max_queue, raw_capture=None, epoch=0, **kwargs):
         verify_sdk()
         self.max_event_bytes = positive_limit(max_event_bytes)
         self.max_queue = positive_limit(max_queue)
+        self.raw_capture = raw_capture
+        self.epoch = epoch
         super().__init__(**kwargs)
 
     async def connect(self):
@@ -119,6 +121,9 @@ class BoundedMarketsWebSocket(MarketsWebSocket):
         self._message_task = asyncio.create_task(self._message_loop())
 
     def _handle_message(self, data):
+        if self.raw_capture is not None:
+            # Before any size check or parsing, so broken and ignored frames are kept.
+            self.raw_capture.offer('polymarket_us', 'markets_ws', self.epoch, data)
         if len(data.encode('utf-8') if isinstance(data, str) else data) > self.max_event_bytes:
             raise PublicCapacityError('Public websocket message byte capacity exceeded')
         # Validate finiteness before the SDK's bounded parser/event dispatch.
@@ -137,6 +142,9 @@ class BoundedMarketsWebSocket(MarketsWebSocket):
             if any(getattr(getattr(error, frame, None), 'code', None) == 1009
                    for frame in ('rcvd', 'sent')):
                 error = PublicCapacityError('Public websocket message byte capacity exceeded')
+                if self.raw_capture is not None:
+                    # websockets dropped a frame over max_size before _handle_message saw it.
+                    self.raw_capture.mark_oversize('polymarket_us', 'markets_ws', self.epoch)
             self._emit('error', error)
         finally:
             self._emit('close')

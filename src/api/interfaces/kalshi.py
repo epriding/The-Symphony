@@ -34,6 +34,8 @@ class KalshiMarketData(MarketDataClient):
             max_book_levels=max_book_levels,
             max_sequences=(len(self.markets) + 4) if max_event_bytes else None)
         self.epoch = 0
+        # Set by the runtime when raw capture is enabled; offered every inbound data frame.
+        self.raw_capture = None
 
     async def get_market(self, ticker):
         if self.max_event_bytes is not None and ticker not in self.markets:
@@ -115,10 +117,17 @@ class KalshiMarketData(MarketDataClient):
                         attempts = 0
                         yield self.connection(True, "awaiting_resnapshot")
                         async for frame in websocket:
+                            raw = self.raw_capture
+                            if raw is not None and frame.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
+                                # Before any size check or parsing, so broken and ignored frames are kept.
+                                raw.offer('kalshi', 'public_ws', self.epoch, frame.data)
                             if frame.type != aiohttp.WSMsgType.TEXT:
-                                if self.max_event_bytes and frame.type == aiohttp.WSMsgType.ERROR:
-                                    failure = websocket.exception()
-                                    if getattr(failure, 'code', None) == 1009:
+                                if (frame.type == aiohttp.WSMsgType.ERROR
+                                        and getattr(websocket.exception(), 'code', None) == 1009):
+                                    if raw is not None:
+                                        # aiohttp dropped a frame over max_msg_size before we saw it.
+                                        raw.mark_oversize('kalshi', 'public_ws', self.epoch)
+                                    if self.max_event_bytes:
                                         from .bounded_public import PublicCapacityError
                                         raise PublicCapacityError('Public websocket message byte capacity exceeded')
                                 if frame.type in {aiohttp.WSMsgType.ERROR, aiohttp.WSMsgType.CLOSED}:

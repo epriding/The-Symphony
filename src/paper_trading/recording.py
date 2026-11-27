@@ -14,7 +14,7 @@ from ..utilities import classes, market_events
 from . import models
 
 SCHEMA_VERSION = 2
-SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3, 4}
+SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3, 4, 5}
 MAX_HEADER_BYTES = 16 * 1024 * 1024
 COMPATIBILITY_EVENT_BYTES = 262144
 TYPES = {
@@ -44,6 +44,7 @@ PROVENANCE_PATHS = (
     'src/utilities/logger.py', 'src/api/interfaces/bounded_public.py',
     'src/api/interfaces/public_market_data.py', 'src/api/interfaces/kalshi.py',
     'src/api/interfaces/polymarket_us_public.py', 'src/api/kalshi/public_api.py',
+    'src/raw_capture/records.py', 'src/raw_capture/capture.py', 'src/raw_capture/validator.py',
 )
 
 
@@ -123,7 +124,11 @@ class Recorder:
                                                    stderr=subprocess.DEVNULL).strip()
             except (OSError, subprocess.CalledProcessError):
                 revision = "unknown"
-            self.schema_version = 3 if runtime_config is not None else SCHEMA_VERSION
+            # Version 5 is version 3 plus a raw_capture config section.
+            if runtime_config is None:
+                self.schema_version = SCHEMA_VERSION
+            else:
+                self.schema_version = 5 if 'raw_capture' in runtime_config else 3
             self.max_event_bytes = (runtime_config['runtime']['limits']['max_event_bytes']
                                     if runtime_config is not None else None)
             self.manifest = dict(schema_version=self.schema_version, code_revision=revision,
@@ -201,9 +206,11 @@ def read_capture(directory):
     digest = sha256()
     count = 0
     row_limit = None
-    if schema_version in (3, 4):
+    if schema_version in (3, 4, 5):
         from .runtime_config import validate_bot_config
         runtime_config = validate_bot_config(manifest.get('runtime_config'), require_runtime=True)
+        if ('raw_capture' in runtime_config) != (schema_version == 5):
+            raise ValueError('Only capture schema 5 has a raw_capture config section, and it always does')
         row_limit = runtime_config['runtime']['limits']['max_event_bytes']
     else:
         row_limit = COMPATIBILITY_EVENT_BYTES
